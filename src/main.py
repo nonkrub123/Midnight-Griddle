@@ -1,32 +1,101 @@
 from settings import *
 from station import *
+from interactive import *
+import time
+import pygame
+
 
 class InputHandler:
-    def __init__(self):
-        self.gamedata = GameData()
+    def __init__(self, screen_width, screen_height):
+        self.ratio_x = GAME_W / screen_width
+        self.ratio_y = GAME_H / screen_height
 
-    def handle_events(self, events, active_station):
+        self.held_item       = None
+        self.held_group      = None
+        self.mouse_down_time = 0
+        self.mouse_down_pos  = (0, 0)
+        self.is_dragging     = False
+        self.mouse_pos       = (0, 0)
+
+    def _remap(self, pos):
+        """Remap screen position (x,y) to match game position"""
+        return (pos[0] * self.ratio_x, pos[1] * self.ratio_y)
+
+    def _reset(self):
+        """"""
+        self.held_item   = None
+        self.held_group  = None
+        self.is_dragging = False
+
+    def _find_sprite_and_group(self, pos, *groups):
+        """
+        Hit-test groups in priority order.
+        Returns (sprite, owning_group) or (None, None).
+        """
+        for group in groups:
+            for sprite in reversed(group.sprites()):
+                if sprite.rect.collidepoint(pos):
+                    return sprite, group
+        return None, None
+    
+    def handle_events(self, events, *groups):
         for event in events:
-            # 1. Grabbing
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                # Check station ingredients
-                for sprite in active_station.items:
-                    if sprite.rect.collidepoint(event.pos):
-                        self.gamedata.grab(sprite)
-                        break
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                pos = self._remap(event.pos)  # remap once, right here
 
-            # 2. Dropping
-            if event.type == pygame.MOUSEBUTTONUP:
-                held = self.gamedata.get_held_item()
-                if held:
-                    # Check if dropped on a station block
-                    # We look at the blocks INSIDE the active station
-                    hit_block = pygame.sprite.spritecollideany(held, active_station.blocks)
-                    if hit_block:
-                        hit_block.place_item(self.gamedata.release_item())
-                    else:
-                        self.gamedata.release_item() # Drop it in mid-air
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self._on_mouse_down(pos, *groups)
+                elif event.type == pygame.MOUSEMOTION:
+                    self._on_mouse_motion(pos)
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self._on_mouse_up(pos, *groups)
+                
 
+    def handle_dragging(self):
+        if self.is_dragging and self.held_item and self.held_group:
+            self.held_group.handle_drag(self.held_item, self.mouse_pos)
+
+    def _on_mouse_down(self, pos, *groups):
+        self.mouse_down_time = time.time()
+        self.mouse_down_pos  = pos
+        self.mouse_pos       = pos
+
+        sprite, group = self._find_sprite_and_group(pos, *groups)
+        if sprite is None:
+            return
+
+        if sprite.has_tag("draggable"):
+            self.held_item  = sprite
+            self.held_group = group
+        else:
+            group.handle_click(sprite)    # non-draggable → immediate click
+
+    def _on_mouse_motion(self, pos):
+        self.mouse_pos = pos
+
+        if not self.held_item or self.is_dragging:
+            return
+
+        if time.time() - self.mouse_down_time >= CLICK_THRESHOLD:
+            self.is_dragging = True
+
+    def _on_mouse_up(self, pos, *groups):
+        if not self.held_item or not self.held_group:
+            return
+
+        held_duration = time.time() - self.mouse_down_time
+
+        if held_duration < CLICK_THRESHOLD or pos == self.mouse_down_pos:
+            # short press → treat as click
+            self.held_group.handle_click(self.held_item)
+        else:
+            # drag release → find what's under the drop and tell held_group
+            target, _ = self._find_sprite_and_group(pos, *groups)
+            if target and target is not self.held_item:
+                self.held_group.handle_drop(self.held_item, target)
+
+        self._reset()
+    
 class GameManager:
     def __init__(self):
         pygame.init()
@@ -39,7 +108,7 @@ class GameManager:
             (self.screen_width, self.screen_height), 
             pygame.FULLSCREEN
         )
-        self.game_wrapper = pygame.surface.Surface((640, 360))
+        self.game_wrapper = pygame.surface.Surface((GAME_W, GAME_H))
 
         self.clock = pygame.time.Clock()
         self.fps = FPS
@@ -47,70 +116,33 @@ class GameManager:
         self.state = "playing" # Menu(load game/ new game), Play, horror, gameover, setting
         
         # InputHanlder & Station
-        self.input_handler = InputHandler()
-        self.station_manager = StationManager(self.game_wrapper)
+        self.input_handler = InputHandler(self.screen_width, self.screen_height)
+
+        self.station_manager = StationManager(
+            self.game_wrapper,
+            self.on_station_switch   # ← callback
+        )
 
         # Drawing group
-        self.all_sprites = pygame.sprite.Group()
-
-        # 2. The "Snap Points" (Grills, Plates, Trash cans)
-        self.stations_group = pygame.sprite.Group()
-
-        # 3. The "Moving Parts" (Patties, Buns, Cheese)
-        self.ingredients_group = pygame.sprite.Group()
-
-        # Tracking the item currently being dragged
-        self.selected_item = None
+        self.all_sprites = self.station_manager.get_all_sprites()
+        self.all_groups = self.station_manager.get_all_groups()
+        
+    def on_station_switch(self, new_sprites, new_groups):
+        """Called by StationManager when station changes."""
+        self.all_sprites = new_sprites
+        self.all_groups = new_groups
 
     def handle_events(self):
         # 1. Get the raw OS events
         self.events = pygame.event.get()
         
-        # 2. Calculate the "Shrink Ratio" 
-        # (How much smaller is the game than the window?)
-        ratio_x = 640 / self.screen_width
-        ratio_y = 360 / self.screen_height
-
-        for event in self.events:
-            if event.type == pygame.QUIT:
-                self.running = False
-            
-            # 3. The Magic Fix: Remap the mouse position
-            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-                # Translate the 1000x1000 click back to 640x360 logic
-                new_x = event.pos[0] * ratio_x
-                new_y = event.pos[1] * ratio_y
-                
-                # Overwrite the event position so the UI sees the "Game World" coords
-                event.pos = (new_x, new_y)
-
-                # Pick up logic
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    for sprite in self.ingredients_group:
-                        if sprite.rect.collidepoint(event.pos):
-                            self.selected_item = sprite
-                            sprite.dragging = True
-                            break
-
-                # Drop logic
-                if event.type == pygame.MOUSEBUTTONUP:
-                    if self.selected_item:
-                        # Check if dropped on a station
-                        hit_station = pygame.sprite.spritecollideany(self.selected_item, self.stations_group)
-                        if hit_station:
-                            hit_station.place_item(self.selected_item)
-                        
-                        self.selected_item.dragging = False
-                        self.selected_item = None
+        self.input_handler.handle_events(self.events, *self.all_groups)
 
     def update(self):
         # Pass the already-remapped events to the manager
-        self.station_manager.main(self.events, self.dt)
-        
-        # Update all ingredients (this handles the "following the mouse" logic)
-        # We pass the remapped mouse_pos specifically
-        if self.selected_item:
-            self.selected_item.update(self.mouse_pos, self.dt)
+        # self.station_manager.main(self.events, self.dt)
+        self.input_handler.handle_dragging()
+        pass
         
     def render(self):
         """Renders everything to the screen."""
@@ -118,11 +150,11 @@ class GameManager:
         self.game_wrapper.fill((30, 30, 30)) 
 
         # 1. Draw to the WRAPPER (the 640x360 surface)
-        self.stations_group.draw(self.game_wrapper)
-        self.ingredients_group.draw(self.game_wrapper)
+        self.all_sprites.draw(self.game_wrapper)
+        # self.ingredients_group.draw(self.game_wrapper)
         
-        if self.selected_item:
-            self.game_wrapper.blit(self.selected_item.image, self.selected_item.rect)
+        # if self.selected_item:
+        #     self.game_wrapper.blit(self.selected_item.image, self.selected_item.rect)
 
         # 4.This is change station ui
         self.station_manager.render_ui()
