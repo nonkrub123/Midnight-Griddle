@@ -1,55 +1,5 @@
 from settings import *
-
-class InteractiveObject(pygame.sprite.Sprite):
-    def __init__(self, name, image_path, pos, tags=None):
-        super().__init__()
-        self._layer  = LAYER_FOOD
-        self.name    = name
-        self.tags    = set(tags or ["clickable"])
-
-        self.image   = pygame.image.load(image_path).convert_alpha()
-        self.rect    = self.image.get_rect(topleft=pos)
-
-    def has_tag(self, tag):
-        return tag in self.tags
-
-    def on_click(self):    pass
-    def on_drag(self, pos): pass
-    def on_place(self):    pass
-    def update(self): pass
-
-class UIButton(InteractiveObject):
-    def __init__(self, name, image_path, pos, callback, tags=None):
-        super().__init__(name, image_path, pos, tags)
-        
-        self._layer = LAYER_UI
-        self.callback = callback
-
-    def on_click(self):
-        self.callback()
-
-class InteractiveIngredient(InteractiveObject):
-    def __init__(self, name, image_path, pos, tags=None):
-        tags = set(tags or ["draggable", "clickable", "ingredient"])
-        super().__init__(name, image_path, pos, tags)
-
-    def on_drag(self, pos):
-        self.rect.center = pos
-
-class InteractiveGrillable(InteractiveIngredient):
-    def __init__(self, name, image_path, pos, tags=None):
-        tags = set(tags or ["draggable", "clickable"]) | {"grillable"}
-        super().__init__(name, image_path, pos, tags)
-    
-# class StationBlock(pygame.sprite.Sprite):
-#     """The visual station tile which only contain a sprite, no group logic here."""
-#     def __init__(self, name, image_path, pos):
-#         super().__init__()
-#         self._layer = LAYER_STATION
-#         self.name   = name
-#         self.image  = pygame.image.load(image_path).convert_alpha()
-#         self.rect   = self.image.get_rect(topleft=pos)
-
+from interactive import *
 class BaseGroup(pygame.sprite.Group):
     """Base class for handling"""
     def handle_click(self, sprite):
@@ -62,7 +12,7 @@ class BaseGroup(pygame.sprite.Group):
         # guaranteed: this sprite is being dragged
         if sprite.has_tag("draggable"):
             sprite.on_drag(pos)
-            print("Base group handle dragging")
+            # print("Base group handle dragging")
 
     def handle_drop(self, sprite, target):
         # guaranteed: sprite was dropped on target
@@ -107,16 +57,16 @@ class StackGroup(BaseGroup):
 
     # ── restack ───────────────────────────────────────────────────────────────
 
-    def _restack_all(self):
-        base_x    = self.station_block.rect.centerx
-        current_y = self.station_block.rect.bottom
+    # def _restack_all(self):
+    #     base_x    = self.station_block.rect.centerx
+    #     current_y = self.station_block.rect.bottom
 
-        for item in self.placed_items():
-            current_y -= item.rect.height - self.STACK_OVERLAP
-            item.rect.centerx = base_x
-            item.rect.top     = current_y
+    #     for item in self.placed_items():
+    #         current_y -= item.rect.height - self.STACK_OVERLAP
+    #         item.rect.centerx = base_x
+    #         item.rect.top     = current_y
 
-        self._lock_all_except_top()   # always re-evaluate locks after any change
+    #     self._lock_all_except_top()   # always re-evaluate locks after any change
 
     # ── input callbacks ───────────────────────────────────────────────────────
 
@@ -127,19 +77,48 @@ class StackGroup(BaseGroup):
         sprite.on_drag(pos)           # same — locked items are never returned by hit-test
 
     def handle_drop(self, sprite, target):
+        print(f"[DROP] {sprite.name} onto {target.name} | can_accept={self.can_accept(sprite)} | full={self.is_full()} | placed={len(self.placed_items())}")
         if self.can_accept(sprite):
+            print(f"[DROP] Adding {sprite.name} to {self.__class__.__name__}")
             self.add(sprite)
+            print(f"[DROP] Added. Sprites now: {[s.name for s in self.sprites()]}")
             self._restack_all()
+            print(f"[DROP] Restack done")
             sprite.on_place()
+            print(f"[DROP] on_place done")
+            return True
+        else:
+            print(f"[DROP] REJECTED: {self.__class__.__name__} is full or invalid.")
+            return False
 
     def handle_remove(self, sprite):
+        print(f"[REMOVE] {sprite.name} from {self.__class__.__name__} | currently in group: {sprite in self.sprites()}")
         self.remove(sprite)
+        print(f"[REMOVE] Removed. Restacking...")
         self._restack_all()
+        print(f"[REMOVE] Restack done")
 
     def handle_snapback(self, sprite):
+        print(f"[SNAPBACK] {sprite.name} | already in group: {sprite in self.sprites()}")
         if sprite not in self.sprites():
             self.add(sprite)
         self._restack_all()
+        print(f"[SNAPBACK] done")
+
+    def _restack_all(self):
+        items = self.placed_items()
+        print(f"[RESTACK] {self.__class__.__name__} has {len(items)} placed items: {[s.name for s in items]}")
+        base_x    = self.station_block.rect.centerx
+        current_y = self.station_block.rect.bottom
+
+        for item in items:
+            current_y -= item.rect.height - self.STACK_OVERLAP
+            item.rect.centerx = base_x
+            item.rect.top     = current_y
+            print(f"[RESTACK]   placed {item.name} at y={current_y}")
+
+        self._lock_all_except_top()
+        print(f"[RESTACK] lock pass done. top={self.top_item().name if self.top_item() else None}")
 
     # ── acceptance ────────────────────────────────────────────────────────────
 
@@ -169,6 +148,10 @@ class StackGroup(BaseGroup):
 class GrillGroup(StackGroup):
     """Only accepts grillable items. Click flips the patty."""
 
+    # def __init__(self, name, image_path, pos, max_capacity):
+    #     super().__init__(name, image_path, pos, max_capacity)
+
+
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("grillable") and not self.is_full()
 
@@ -176,9 +159,9 @@ class GrillGroup(StackGroup):
         if sprite is not self.station_block and sprite.has_tag("grillable"):
             sprite.flip()                  # grill-specific: flip on click
 
-    def handle_remove(self, sprite):
-        self.remove(sprite)
-        print("Grill group handle remove")
+    # def handle_remove(self, sprite):
+    #     self.remove(sprite)
+    #     print("Grill group handle remove")
 
 class PlateGroup(StackGroup):
     """Accepts any ingredient. No special click behavior."""

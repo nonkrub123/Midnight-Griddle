@@ -28,13 +28,13 @@ class InputHandler:
         self.is_dragging = False
 
     def _find_sprite_and_group(self, pos, *groups):
-        """
-        Hit-test groups in priority order.
-        Returns (sprite, owning_group) or (None, None).
-        """
         for group in groups:
             for sprite in reversed(group.sprites()):
+                if sprite is self.held_item:
+                    continue
                 if sprite.rect.collidepoint(pos):
+                    if sprite.has_tag("locked"):
+                        continue
                     return sprite, group
         return None, None
     
@@ -55,6 +55,7 @@ class InputHandler:
         if self.is_dragging and self.held_item and self.held_group:
             self.held_group.handle_drag(self.held_item, self.mouse_pos)
 
+
     def _on_mouse_down(self, pos, *groups):
         self.mouse_down_time = time.time()
         self.mouse_down_pos  = pos
@@ -67,8 +68,12 @@ class InputHandler:
         if sprite.has_tag("draggable"):
             self.held_item  = sprite
             self.held_group = group
+            self._original_layer = sprite._layer
+            for g in sprite.groups():
+                if isinstance(g, pygame.sprite.LayeredUpdates):
+                    g.change_layer(sprite, LAYER_DRAGGING)
         else:
-            group.handle_click(sprite)    # non-draggable → immediate click
+            group.handle_click(sprite)
 
     def _on_mouse_motion(self, pos):
         self.mouse_pos = pos
@@ -83,16 +88,25 @@ class InputHandler:
         if not self.held_item or not self.held_group:
             return
 
-        held_duration = time.time() - self.mouse_down_time
+        # Restore layer first, before drop/snapback repositions the sprite
+        for g in self.held_item.groups():
+            if isinstance(g, pygame.sprite.LayeredUpdates):
+                g.change_layer(self.held_item, self._original_layer)
 
-        if held_duration < CLICK_THRESHOLD or pos == self.mouse_down_pos:
-            # short press → treat as click
+        held_duration = time.time() - self.mouse_down_time
+        dx = pos[0] - self.mouse_down_pos[0]
+        dy = pos[1] - self.mouse_down_pos[1]
+        moved = (dx*dx + dy*dy) > 4
+
+        if held_duration < CLICK_THRESHOLD or not moved:
             self.held_group.handle_click(self.held_item)
         else:
-            # drag release → find what's under the drop and tell held_group
-            target, _ = self._find_sprite_and_group(pos, *groups)
+            target, target_group = self._find_sprite_and_group(pos, *groups)
             if target and target is not self.held_item:
-                self.held_group.handle_drop(self.held_item, target)
+                if target_group.handle_drop(self.held_item, target):
+                    self.held_group.handle_remove(self.held_item)
+                else:
+                    self.held_group.handle_snapback(self.held_item)
 
         self._reset()
     
@@ -133,14 +147,13 @@ class GameManager:
         self.all_groups = new_groups
 
     def handle_events(self):
-        # 1. Get the raw OS events
         self.events = pygame.event.get()
         
-        self.input_handler.handle_events(self.events, *self.all_groups)
+        # self.input_handler.handle_events(self.events, *self.all_groups)
+        # In GameManager, pass groups front-to-back (UI last passed = checked first if you reverse)
+        self.input_handler.handle_events(self.events, *reversed(self.all_groups))
 
     def update(self):
-        # Pass the already-remapped events to the manager
-        # self.station_manager.main(self.events, self.dt)
         self.input_handler.handle_dragging()
         pass
         
@@ -171,7 +184,6 @@ class GameManager:
     
     def playing(self):
             """The main Game Loop."""
-                # Limits FPS and provides 'dt' (delta time) if needed for smooth movemen
             self.dt = self.clock.tick(self.fps) / 1000
 
             # Update Game Data

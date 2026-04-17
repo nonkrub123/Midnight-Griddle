@@ -1,6 +1,7 @@
 from settings import *
 from gamedata import *
 from interactive import *
+from group import *
 
 class Sprite_Interactive(pygame.sprite.Sprite):
     def __init__(self, pos, path, x, y):
@@ -48,28 +49,28 @@ class StationManager:
         # UIButton((10, 550),  "20.png", self.__nav_group, lambda: self.switch_station("order"))
         # UIButton((120, 550), "20.png", self.__nav_group, lambda: self.switch_station("grill"))
 
+    def get_active_station(self):
+        return self.stations[self.current_station]
+    
     def switch_station(self, target):
         self.current_station = target
         self.__on_switch(self.get_all_sprites(), self.get_all_groups())  # notify GameManager with new sprites
 
     def get_all_sprites(self):
-        """Returns every sprite GameManager needs to know about."""
-        all_sprites = pygame.sprite.LayeredUpdates()
-
-        all_sprites.add(self.__nav_group)
-        # Nav buttons are always present
+        all_sprites = self.get_active_station().get_all_sprites()
         for sprite in self.__nav_group:
             all_sprites.add(sprite)
+        return all_sprites
 
         # Active station's sprites
-        active = self.stations[self.current_station]
-        for sprite in active.get_sprites():
-            all_sprites.add(sprite)
+        # active = self.stations[self.current_station]
+        # for sprite in active.get_all_sprites():
+        #     all_sprites.add(sprite)
 
         return all_sprites
 
     def get_all_groups(self):
-        return self.all_groups
+        return self.all_groups + self.get_active_station().get_all_groups()
     
     def update(self, dt):
         for station in self.stations.values():
@@ -81,42 +82,49 @@ class StationManager:
 
 class Station:
     def __init__(self, screen, bg_image_path):
-        self.screen = screen
-        self.background = pygame.image.load(bg_image_path).convert()
-        self.items  = pygame.sprite.Group()
-        self.blocks = pygame.sprite.Group()
+        self.screen      = screen
+        self.background  = pygame.image.load(bg_image_path).convert()
+        
+        self.all_sprites = pygame.sprite.LayeredUpdates()
+        self.all_groups  = []
 
-    def get_sprites(self):
-        """Station returns its own sprites — Station's responsibility."""
-        all_sprites = pygame.sprite.LayeredUpdates()
-        all_sprites.add(self.items)
-        all_sprites.add(self.blocks)
-        return all_sprites
+    def add_sprites_group(self, group, sprites):
+        group.add(*sprites)
+
+    def register_group(self, group):
+        self.all_groups.append(group)          # [grill, plate, dispenser, ...]
+        print(f"Registered: Appended {group} to all groups")
+        self.all_sprites.add(group.sprites())
+
+    def get_all_sprites(self):
+        return self.all_sprites
+
+    def get_all_groups(self):
+        return self.all_groups                 # → [GrillGroup, PlateGroup, ...]
 
     def update(self, dt):
-        for item in self.items:
-            if hasattr(item, 'update'):
-                item.update(dt)
+        self.all_sprites.update(dt)
 
     def draw(self):
         self.screen.blit(self.background, (0, 0))
-        self.items.draw(self.screen)
-        self.blocks.draw(self.screen)
-        
+        self.all_sprites.draw(self.screen)
+
 class GrillStation(Station):
     def __init__(self, screen, bg_image_path):
         super().__init__(screen, bg_image_path)
-        self.items.add(InteractiveIngredient("bun2", GamePath.get_ingredients("bun2.png"), (10, 10)))
 
-class Order:
-    pass
+        self.grill = GrillGroup("grill", GamePath.get_ingredients("meat_burn.png"), (100, 100), max_capacity=2)
+        self.plate = GrillGroup("plate", GamePath.get_ingredients("bun2.png"), (400, 100), max_capacity=20)
+        
+        self.other_group = BaseGroup()
+        item = InteractiveGrillable("meat", GamePath.get_ingredients("meat.png"), (600, 100))
+        item2 = InteractiveGrillable("meat", GamePath.get_ingredients("meat_medium.png"), (1000, 100))
+        self.other_group.add(item, item2)      # add item BEFORE registering
 
-class Ingredient:
-    pass
+        self.register_group(self.grill)
+        self.register_group(self.plate)
+        self.register_group(self.other_group)  # now has item in it
 
-class CustomerManager:
-    pass
-
-class Customer:
-    pass
-
+    # def get_all_groups(self):
+    #     return self.all_groups   # → [self.grill, self.plate]
+    
