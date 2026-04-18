@@ -1,226 +1,164 @@
 from settings import *
+ 
+import pygame
+import copy
+from settings import *
+from itemdata import ItemData  # Make sure this import matches your filename!
 
 class InteractiveObject(pygame.sprite.Sprite):
-    def __init__(self, name, image_path, pos, tags=None):
+    def __init__(self, name, pos, image: dict):
         super().__init__()
-        self._layer  = LAYER_FOOD
-        self.name    = name
-        self.tags    = set(tags or ["clickable"])
-
-        self.image   = pygame.image.load(image_path).convert_alpha()
-        self.rect    = self.image.get_rect(topleft=pos)
-
-    def has_tag(self, tag):
-        return tag in self.tags
-
-    def on_click(self):    pass
-    def on_drag(self, pos): pass
-    def on_place(self):    pass
-    def update(self): pass
-
-class UIButton(InteractiveObject):
-    def __init__(self, name, image_path, pos, callback, tags=None):
-        super().__init__(name, image_path, pos, tags)
+        self.name = name
         
+        # 1. image are passed infrom the Factory
+        self.image = image["default"] if isinstance(image, dict) else image
+        self.rect = self.image.get_rect(center=pos)
+        
+        # 3. New Foundation Attributes
+        self.current_group = None  # Track which group currently "owns" this object
+        self.is_locked = False     # If True, InputHandler ignores this object
+        
+        # 4. Movement Foundation
+        self.target_pos = None     # Where we want to go
+        self.start_pos = pygame.Vector2(pos)
+        self.move_timer = 0
+        self.move_duration = 0
+
+    def set_target(self, pos, duration=0.2):
+        """Call this instead of setting rect.center directly."""
+        self.target_pos = pygame.Vector2(pos)
+        self.start_pos = pygame.Vector2(self.rect.center)
+        self.move_timer = 0
+        self.move_duration = duration
+
+    def update(self, dt):
+        """Standard update called by the Group."""
+        if self.target_pos:
+            self.move(dt)
+ 
+    def move(self, dt):
+        self.move_timer += dt
+        
+        # Calculate completion (0.0 to 1.0)
+        t = self.move_timer / self.move_duration
+        if t >= 1.0:
+            # We arrived!
+            self.rect.center = (self.target_pos.x, self.target_pos.y)
+            self.target_pos = None
+        else:
+            # Move a percentage of the way
+            # New Position = Start + (Target - Start) * t
+            new_pos = self.start_pos.lerp(self.target_pos, t)
+            self.rect.center = (new_pos.x, new_pos.y)
+            
+    def has_tag(self, tag):
+        """
+        The Magic Bridge: Instead of storing a set of strings, 
+        we instantly look up the boolean value in our database.
+        """
+        return ItemData.get_prop(self.name, tag, False)
+
+    # ── Unchanged Callbacks ──
+    def on_click(self):     pass
+    def on_drag(self, pos): self.rect.center = pos
+    def on_place(self):     pass
+    def on_snapback(self):  pass
+ 
+class UIButton(InteractiveObject):
+    def __init__(self, name, image_path, pos, callback):
+        # Buttons aren't in the DB — load the image here and wrap in a dict
+        img = pygame.image.load(image_path).convert_alpha()
+        super().__init__(name, pos, img)
         self._layer = LAYER_UI
         self.callback = callback
 
     def on_click(self):
         self.callback()
+ 
+ 
+# ── Grillable Item ────────────────────────────────────────────────────────────
 
-class InteractiveIngredient(InteractiveObject):
-    def __init__(self, name, image_path, pos, tags=None):
-        tags = set(tags or ["draggable", "clickable", "ingredient"])
-        super().__init__(name, image_path, pos, tags)
+class GrillableItem(InteractiveObject):
+    """
+    Cook state is driven entirely by time on the grill:
+      - raw:    _time_on_grill <  50% of max_cook_time
+      - cooked: _time_on_grill >= 50% and < 150%
+      - burnt:  _time_on_grill >= 150%
+    """
 
-    def on_drag(self, pos):
-        self.rect.center = pos
+    STATES = ("raw", "cooked", "burnt")
+    COOKED_THRESHOLD = 0.50   # 50 %  → becomes cooked
+    BURNT_THRESHOLD  = 1.50   # 150 % → becomes burnt
 
-class InteractiveGrillable(InteractiveIngredient):
-    def __init__(self, name, image_path, pos, tags=None):
-        tags = set(tags or ["draggable", "clickable"]) | {"grillable"}
-        super().__init__(name, image_path, pos, tags)
-    
-# class StationBlock(pygame.sprite.Sprite):
-#     """The visual station tile which only contain a sprite, no group logic here."""
-#     def __init__(self, name, image_path, pos):
-#         super().__init__()
-#         self._layer = LAYER_STATION
-#         self.name   = name
-#         self.image  = pygame.image.load(image_path).convert_alpha()
-#         self.rect   = self.image.get_rect(topleft=pos)
+    def __init__(self, name, pos, images: dict):  # ← accept images
+        self.max_cook_time  = ItemData.get_prop(name, "max_cook_time", 10.0)
+        self._cook_state    = "raw"
+        self._time_on_grill = 0.0
+        self._is_grilling   = False
+        self.state_images   = images  # ← just use what factory gave us
+        super().__init__(name, pos, self.state_images)
 
-class BaseGroup(pygame.sprite.Group):
-    """Base class for handling"""
-    def handle_click(self, sprite):
-        # guaranteed: player clicked this sprite
-        if sprite.has_tag("clickable"):
-            sprite.on_click()
-            print("Base Group handle clicking")
+    # ── Cook state ────────────────────────────────────────────────────────────
 
-    def handle_drag(self, sprite, pos):
-        # guaranteed: this sprite is being dragged
-        if sprite.has_tag("draggable"):
-            sprite.on_drag(pos)
-            print("Base group handle dragging")
+    @property
+    def cook_state(self):
+        return self._cook_state
 
-    def handle_drop(self, sprite, target):
-        # guaranteed: sprite was dropped on target
-        # target.on_drop(sprite)
-        print("Base group handle drop")
-    
-    def handle_remove(self, sprite):
-        self.remove(sprite)
-        print("Base group handle remove")
+    @cook_state.setter
+    def cook_state(self, value):
+        assert value in self.STATES, f"Invalid cook state: {value}"
+        if value != self._cook_state:
+            self._cook_state = value
+            self.image = self.state_images[value]
+            print(f"[GRILL] {self.name} → {value}  (t={self._time_on_grill:.2f}s / max={self.max_cook_time}s)")
 
-    def handle_snapback(self, sprite):
-        print("Base group handle snapback")
-        print(f"Sprite snapback groups: {sprite.groups()}")
+    def _evaluate_cook_state(self):
+        ratio = self._time_on_grill / self.max_cook_time
+        if ratio >= self.BURNT_THRESHOLD:
+            return "burnt"
+        elif ratio >= self.COOKED_THRESHOLD:
+            return "cooked"
+        else:
+            return "raw"
 
-class StackGroup(BaseGroup):
-    def __init__(self, name, image_path, pos, max_capacity):
-        super().__init__()
-        self.station_block = InteractiveObject(name, image_path, pos)
-        self.add(self.station_block)
-        self.max_capacity = max_capacity
-        self.STACK_OVERLAP = 4
+    # ── Lifecycle callbacks ───────────────────────────────────────────────────
 
-    # ── helpers ───────────────────────────────────────────────────────────────
+    def on_place(self):
+        self._is_grilling = True
 
-    def placed_items(self):
-        return [s for s in self.sprites() if s is not self.station_block]
+    def on_snapback(self):
+        self._is_grilling = False
 
-    def is_full(self):
-        return len(self.placed_items()) >= self.max_capacity
-
-    def top_item(self):
-        items = self.placed_items()
-        return items[-1] if items else None
-
-    def _lock_all_except_top(self):
-        """Lock every placed item, then unlock only the top."""
-        for item in self.placed_items():
-            item.tags.add("locked")
-        top = self.top_item()
-        if top:
-            top.tags.discard("locked")
-
-    # ── restack ───────────────────────────────────────────────────────────────
-
-    def _restack_all(self):
-        base_x    = self.station_block.rect.centerx
-        current_y = self.station_block.rect.bottom
-
-        for item in self.placed_items():
-            current_y -= item.rect.height - self.STACK_OVERLAP
-            item.rect.centerx = base_x
-            item.rect.top     = current_y
-
-        self._lock_all_except_top()   # always re-evaluate locks after any change
-
-    # ── input callbacks ───────────────────────────────────────────────────────
-
-    def handle_click(self, sprite):
-        sprite.on_click()             # locked check already handled in _find_sprite_and_group
-
-    def handle_drag(self, sprite, pos):
-        sprite.on_drag(pos)           # same — locked items are never returned by hit-test
-
-    def handle_drop(self, sprite, target):
-        if self.can_accept(sprite):
-            self.add(sprite)
-            self._restack_all()
-            sprite.on_place()
-
-    def handle_remove(self, sprite):
-        self.remove(sprite)
-        self._restack_all()
-
-    def handle_snapback(self, sprite):
-        if sprite not in self.sprites():
-            self.add(sprite)
-        self._restack_all()
-
-    # ── acceptance ────────────────────────────────────────────────────────────
-
-    def can_accept(self, sprite) -> bool:
-        return not self.is_full()
-                # sprite.rect.centery = self.station_block.rect.centery
-    # def _stack(self, sprite):
-    #     """Snap sprite onto the top of the current stack."""
-    #     items = self.placed_items()
+    def update(self, dt=0):
+        if not self._is_grilling or self._cook_state == "burnt":
+            return 
         
-    #     if items:
-    #         top_sprite = items[-1]             # the current top of the stack
-    #         sprite.rect.centerx = top_sprite.rect.centerx
-    #         sprite.rect.centerx  = top_sprite.rect.centerx     # sit exactly on top
-    #     else:
-    #         # nothing on the station yet — land on the station tile itself
-    #         sprite.rect.centerx = self.station_block.rect.centerx
-    #         sprite.rect.centerx  = self.station_block.rect.centerx
-            
-    # def _stack(self, sprite):
-    #     """Snap sprite onto the top of the current stack."""
-    #     stack_index = len(self.placed_items())
-    #     sprite.rect.centerx = self.station_block.rect.centerx
-    #     sprite.rect.centery = self.station_block.rect.centery - (stack_index * self.stack_offset)
-    #     self.add(sprite)
+        self._time_on_grill += dt
+        self.cook_state = self._evaluate_cook_state() 
 
-class GrillGroup(StackGroup):
-    """Only accepts grillable items. Click flips the patty."""
+    def cook_progress(self):
+        return min(self._time_on_grill / (self.max_cook_time * self.BURNT_THRESHOLD), 1.0)
 
-    def can_accept(self, sprite) -> bool:
-        return sprite.has_tag("grillable") and not self.is_full()
 
-    def handle_click(self, sprite):
-        if sprite is not self.station_block and sprite.has_tag("grillable"):
-            sprite.flip()                  # grill-specific: flip on click
+# ── Ingredient Item ───────────────────────────────────────────────────────────
 
-    def handle_remove(self, sprite):
-        self.remove(sprite)
-        print("Grill group handle remove")
+class IngredientItem(InteractiveObject):
+    def __init__(self, name, pos, images): 
+        super().__init__(name, pos, images)
 
-class PlateGroup(StackGroup):
-    """Accepts any ingredient. No special click behavior."""
 
-    def can_accept(self, sprite) -> bool:
-        return sprite.has_tag("ingredient") and not self.is_full()
-    
-class StationGroup(BaseGroup):
-    """Owns the station_block sprite + everything placed on it."""
-    def __init__(self, name, image_path, pos):
-        super().__init__()
-        
-        # The station_block tile is just another sprite in this group
-        self.station_block = InteractiveObject(name, image_path, pos)
-        self.add(self.station_block)
-        
-        self.stack_offset = 5   # pixels per stacked item
+# ── Sauce Bottle ──────────────────────────────────────────────────────────────
 
-    # ── placement ────────────────────────────────────────────────────────────
+# class SauceBottle(InteractiveObject):
+#     """A stationary bottle. Click spawns its `contains` ingredient at the bottle pos."""
 
-    def place(self, item):
-        """Snap item onto the station_block and track it in the group."""
-        stack_index = len(self.placed_items())
-        
-        item.rect.centerx = self.station_block.rect.centerx
-        item.rect.centery = self.station_block.rect.centery - (stack_index * self.stack_offset)
-        
-        self.add(item)          # group tracks it — no separate list needed
+#     def __init__(self, name, pos, images: dict, contains_id, factory, target_group):
+#         super().__init__(name, pos, images)
+#         self.contains_id  = contains_id
+#         self.factory      = factory
+#         self.target_group = target_group
 
-    def placed_items(self):
-        """Everything on this station_block except the station_block tile itself."""
-        return [s for s in self.sprites() if s is not self.station_block]
-
-    def clear_station(self):
-        for item in self.placed_items():
-            item.kill()
-
-    # ── input ─────────────────────────────────────────────────────────────────
-
-    def is_draggable(self, sprite):
-        return sprite is not self.station_block   # can't drag the station_block itself
-
-    # def handle_drop(self, sprite, target):
-    #     if isinstance(target, DroppableTarget):
-    #         target.accept_drop(sprite)
+#     def on_click(self):
+#         sprite = self.factory.create(self.contains_id, self.rect.topleft)
+#         if sprite:
+#             self.target_group.add(sprite)
