@@ -49,6 +49,17 @@ class ItemFactory:
         else:
             # Generic fallback for 'ui' or 'object'
             return InteractiveObject(name, pos, loaded_surfaces["default"])
+    
+    def create_base_plate(self, image_name=None, pos=(0,0), size=(64,64)):
+        if image_name is None:
+            return self.create_invisible_plate(image_name, pos, size)
+        
+        data      = ItemData.get_item(image_name)
+        if not data: return None
+        data_type = ItemData.get_prop(image_name, "type", "object")
+        file_name = data["state_imgs"]["default"]
+        image_surface = ItemData.load_img(file_name, data_type)
+        return BasePlate(image_name, pos, {"default": image_surface})
 
     def create_invisible_plate(self, name, pos, size):
             """

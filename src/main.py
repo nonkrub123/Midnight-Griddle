@@ -56,9 +56,10 @@ class InputHandler:
                 self._on_mouse_up(pos, *groups)
 
     def handle_dragging(self):
-        """Called every frame. Moves held item and draws it on top."""
-        if self.is_dragging and self.held_item and self.held_group:
-            self.held_group.handle_drag(self.held_item, self.mouse_pos)
+        """Called every frame. Just moves the held item to mouse pos."""
+
+        if self.is_dragging and self.held_item:
+            self.held_item.rect.center = (int(self.mouse_pos[0]), int(self.mouse_pos[1]))
 
     # ── Mouse down ────────────────────────────────────────────────────────────
 
@@ -66,12 +67,14 @@ class InputHandler:
         self.mouse_down_time = time.time()
         self.mouse_down_pos  = pos
         self.mouse_pos       = pos
-
+ 
         sprite, group = self._find_sprite_and_group(pos, *groups)
         if sprite is None:
             return
-
+ 
         if sprite.has_tag("draggable"):
+            # Just remember — don't remove from group yet.
+            # handle_drag fires in _on_mouse_motion once drag threshold is crossed.
             self.held_item  = sprite
             self.held_group = group
         else:
@@ -84,36 +87,43 @@ class InputHandler:
         if self.held_item and not self.is_dragging:
             if time.time() - self.mouse_down_time >= CLICK_THRESHOLD:
                 self.is_dragging = True
+                self.held_group.handle_drag(self.held_item, pos)  # ← lift the sprite
 
     # ── Mouse up ──────────────────────────────────────────────────────────────
-
     def _on_mouse_up(self, pos, *groups):
-        if not self.held_item or not self.held_group:
+        if not self.held_item:
             return
+        # if not self.held_item or not self.held_group:
+        #     return
 
         held_duration = time.time() - self.mouse_down_time
         dx = pos[0] - self.mouse_down_pos[0]
         dy = pos[1] - self.mouse_down_pos[1]
         moved = (dx * dx + dy * dy) > 4
 
+        # 1. Handle Clicks (Short duration or no movement)
         if held_duration < CLICK_THRESHOLD or not moved:
-            # It was a click, not a drag — re-add to group if we removed it
-            if self.held_item not in self.held_group.sprites():
-                self.held_group.add(self.held_item)
+            if self.is_dragging:
+                home = self.held_item.current_group or self.held_group
+                home.handle_snapback(self.held_item)
+            
+            # Fire the click event
             self.held_group.handle_click(self.held_item)
-        else:
-            # It was a drag — find a drop target
-            target, target_group = self._find_sprite_and_group(pos, *groups)
-            if target and target is not self.held_item and target_group is not self.held_group:
-                dropped = target_group.handle_drop(self.held_item, target)
-                if dropped:
-                    self.held_group.handle_remove(self.held_item)
-                else:
-                    self.held_group.handle_snapback(self.held_item)
-            else:
-                # Dropped on empty space or same group
-                self.held_group.handle_snapback(self.held_item)
 
+        # 2. Handle Drops (Actual dragging)
+        else:
+            target, target_group = self._find_sprite_and_group(pos, *groups)
+            dropped = False
+            
+            if target and target is not self.held_item:
+                dropped = target_group.handle_drop(self.held_item, target)
+            
+            if not dropped:
+                home = self.held_item.current_group or self.held_group
+                home.handle_snapback(self.held_item)
+
+        # 3. ALWAYS RESET
+        # This must happen outside the if/else to ensure the state is cleared
         self._reset()
 
 
@@ -138,11 +148,10 @@ class GameManager:
         self.state        = "playing"
 
         self.input_handler   = InputHandler(self.screen_width, self.screen_height)
-        self.station_manager = StationManager(self.game_wrapper, self.on_station_switch)
-        self.all_groups      = self.station_manager.get_all_groups()
+        self.station_manager = StationManager(self.game_wrapper, self._on_station_switch)
 
-    def on_station_switch(self, new_sprites, new_groups):
-        self.all_groups = new_groups
+    def _on_station_switch(self, new_groups):
+        pass  # GameManager asks station_manager for groups fresh each frame
 
     # ── Frame ─────────────────────────────────────────────────────────────────
 
@@ -153,7 +162,8 @@ class GameManager:
                 self.running = False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.running = False
-        self.input_handler.handle_events(self.events, *self.all_groups)
+        groups = self.station_manager.get_all_groups()
+        self.input_handler.handle_events(self.events, *groups)
 
     def update(self):
         self.input_handler.handle_dragging()
@@ -161,15 +171,15 @@ class GameManager:
 
     def render(self):
         self.game_wrapper.fill((30, 30, 30))
- 
+
         # Station draws background + all groups + nav
         self.station_manager.draw()
- 
+
         # Held item always on top
         held = self.input_handler.held_item
         if held and self.input_handler.is_dragging:
             self.game_wrapper.blit(held.image, held.rect)
- 
+
         scaled = pygame.transform.scale(
             self.game_wrapper, (self.screen_width, self.screen_height)
         )

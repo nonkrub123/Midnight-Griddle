@@ -15,8 +15,8 @@ class StationManager:
         self._seed_stock()
 
         self.stations = {
-            "order": TestStation(self.__screen, GamePath.get_station("test.png")),
-            "grill": Station(self.__screen, GamePath.get_station("test.png")),
+            "order": TestStation(self.__screen, GamePath.get_station("test2.jpg")),
+            # "grill": GrillStation(self.__screen, GamePath.get_station("test.png"), GameData()),
         }
         self.current_station = "order"
         self.create_nav_buttons()
@@ -57,7 +57,6 @@ class StationManager:
         # 3. Nav buttons always on top
         self.__nav_group.draw(self.__screen)
 
-
 # ── Base Station ──────────────────────────────────────────────────────────────
 
 class Station:
@@ -87,43 +86,55 @@ class TestStation(Station):
         super().__init__(screen, bg_image_path)
         self.factory = ItemFactory()
 
-        item1 = self.factory.create("top_bun", (100, 100))
-        item2 = self.factory.create("top_bun", (400, 100))
-
+        item1 = self.factory.create("meat", (100, 100))
+        item2 = self.factory.create("meat", (400, 100))
+        stack_test = StackGroup("test", (500,500), 10, base_plate=self.factory.create_base_plate("base_plate", (500,500)))
+        # stack_tes2 = StackGroup("test", (800,800), 10, base_plate=self.factory.create_base_plate("base_plate", (800,800)))
+        grill = GrillGroup("grill1", (1000,1000), 1, base_plate=self.factory.create_base_plate("base_plate", (900,900)))
+        trash_can = TrashGroup("trash can", (1200, 500), 1, base_plate=self.factory.create_base_plate("top_bun", (900,900)))
+        dispenser = DispenserGroup(
+            name          = "meat_dispenser",
+            pos           = (700, 400),
+            template_item = self.factory.create("meat", (700, 400)),
+            base_plate    = self.factory.create_base_plate("base_plate", (700, 400)),
+        )
+        self.register_group(dispenser)
+        self.register_group(dispenser)
+        # base_plate = self.factory.create_base_plate("base_plate", (600,600))
         self.basegroup = BaseGroup()
         self.basegroup.add(item1, item2)
         self.register_group(self.basegroup)
+        self.register_group(stack_test)
+        self.register_group(grill)
+        self.register_group(trash_can)
+        # self.register_group(stack_tes2)
 
 
 # ── Grill Station ─────────────────────────────────────────────────────────────
 
-class GrillStation(Station):
-    def __init__(self, screen, bg_image_path, game_data: GameData):
-        super().__init__(screen, bg_image_path)
-        self.game_data = game_data
-        self.factory   = ItemFactory()
+# class GrillStation(Station):
+#     def __init__(self, screen, bg_image_path, game_data: GameData):
+#         super().__init__(screen, bg_image_path)
+#         self.game_data = game_data
+#         self.factory   = ItemFactory()
 
-        self.grill = GrillGroup(
-            "grill", GamePath.get_ingredients("meat_burn.png"), (100, 100), max_capacity=2
-        )
-        self.plate = PlateGroup(
-            "plate", GamePath.get_ingredients("bun2.png"), (400, 100), max_capacity=20
-        )
-        self.loose_group = BaseGroup()
+#         self.grill = GrillGroup("grill", (100, 100), max_capacity=2)
+#         self.plate = PlateGroup("plate", (400, 100), max_capacity=20)
+#         self.loose_group = BaseGroup()
 
-        meat_template = self.factory.create("meat", pos=(0, 0))
-        self.meat_dispenser = DispenserGroup(
-            name          = "meat_dispenser",
-            image_path    = GamePath.get_station("20.png"),
-            pos           = (700, 400),
-            template_item = meat_template,
-            game_data     = game_data,
-            item_id       = "meat",
-            cost          = 0,
-            out_group     = self.loose_group,
-        )
+#         meat_template = self.factory.create("meat", pos=(0, 0))
+#         self.meat_dispenser = DispenserGroup(
+#             name          = "meat_dispenser",
+#             image_path    = GamePath.get_station("20.png"),
+#             pos           = (700, 400),
+#             template_item = meat_template,
+#             game_data     = game_data,
+#             item_id       = "meat",
+#             cost          = 0,
+#             out_group     = self.loose_group,
+#         )
 
-        self.register_group(self.grill)
-        self.register_group(self.plate)
-        self.register_group(self.loose_group)
-        self.register_group(self.meat_dispenser)
+#         self.register_group(self.grill)
+#         self.register_group(self.plate)
+#         self.register_group(self.loose_group)
+#         self.register_group(self.meat_dispenser)

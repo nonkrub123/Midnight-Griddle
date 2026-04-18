@@ -13,8 +13,8 @@ class ItemData:
             "ingredient":     True,
             "grillable":      True,
             "display_name":   "Beef Patty",
-            "pixel_height":   12,
-            "max_cook_time":  45.0,
+            "pixel_height":   30,
+            "max_cook_time":  20.0,
             "layer_priority": 2, 
             "state_imgs": {
                 "default": "meat.png",
@@ -79,8 +79,8 @@ class ItemData:
             "grillable":      False,
             "display_name":   "Invisible Plate",
             "pixel_height":   0,
-            "layer_priority": 1, 
-            "state_imgs":     {"default": None}, 
+            "layer_priority": 3, 
+            "state_imgs":     {"default": "base_plate.png"}, 
         },
 
         # ── UI ────────────────────────────────────────────────────────────────────

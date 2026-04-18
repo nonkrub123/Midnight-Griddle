@@ -1,87 +1,100 @@
 from settings import *
 from interactive import *
-
+from factory import *
 
 def _load_surface(image_path):
     return pygame.image.load(image_path).convert_alpha()
 
 
-# ── Base Group ────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# BaseGroup
+# Default handle_drop REJECTS. Only subclasses that explicitly want food items
+# accept.
+# ─────────────────────────────────────────────────────────────────────────────
 class BaseGroup(pygame.sprite.LayeredUpdates):
     """
-    All groups inherit from LayeredUpdates so sprites can be lifted to
-    LAYER_DRAGGING while being dragged and restored afterwards.
-
-    current_group contract
-    ──────────────────────
-    • handle_drag  → sets sprite.current_group = self  (sprite is "owned" by us)
-    • handle_drop  → winner group takes ownership; loser calls handle_remove
-    • handle_snapback → uses sprite.current_group to re-add the sprite
+    current_group contract:
+    - handle_drag     : removes sprite, sets sprite.current_group = self
+    - handle_drop     : REJECTS by default (returns False) — subclasses opt in
+    - handle_snapback : re-adds sprite to current_group (home), clears current_group
     """
+    def add(self, *sprites, **kwargs):
+        super().add(*sprites, **kwargs)
+        for s in sprites:
+            if hasattr(s, 'current_group'):
+                s.current_group = self
 
     def update(self, dt=0):
         for sprite in self.sprites():
             sprite.update(dt)
 
-    # ── Input callbacks ───────────────────────────────────────────────────────
-
     def handle_click(self, sprite):
-        if sprite.has_tag("clickable"):
-            sprite.on_click()
+        sprite.on_click()
 
     def handle_drag(self, sprite, pos):
-        """Remove from group while dragging so it doesn't render twice."""
-        if sprite.has_tag("draggable") and not sprite.is_locked:
-            sprite.current_group = self   # remember home
-            self.remove(sprite)           # ← lifted out; InputHandler draws it
-            sprite.on_drag(pos)
+        """Lift sprite out; remember this group as its home."""
+        sprite.current_group = self
+        self.remove(sprite)
 
     def handle_drop(self, sprite, target):
-        """Base: always reject — subclasses override."""
+        """Base rejects all drops. Groups that hold food must override this."""
         return False
 
-    def handle_remove(self, sprite):
-        """Called on the *source* group after a successful drop elsewhere."""
-        # Sprite was already removed in handle_drag; nothing extra needed here.
-        sprite.current_group = None
-
     def handle_snapback(self, sprite):
-        """Drop was rejected — put the sprite back where it came from."""
-        home = sprite.current_group
-        if home is not None:
-            home.add(sprite)
-            home._on_snapback(sprite)
-        else:
-            # Fallback: just re-add to self
-            self.add(sprite)
+        """Return sprite to its home group."""
+        home = sprite.current_group or self
+        home.add(sprite)
         sprite.current_group = None
+        home._on_snapback(sprite)
 
     def _on_snapback(self, sprite):
-        """Hook for subclasses (e.g. restack). Base does nothing."""
+        """Hook for subclasses. Base just fires on_snapback."""
         sprite.on_snapback()
 
-
-# ── Stack Group ───────────────────────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+# StackGroup
+# ─────────────────────────────────────────────────────────────────────────────
 class StackGroup(BaseGroup):
     """
-    Sprites stack visually on top of a station_block tile.
-    Only the top-most item is unlocked for interaction.
+    Sprites stack upward from a base plate, using each item's pixel_height
+    from ItemData.
+
+    Parameters
+    ----------
+    name         : str
+        Group identifier (also used to name an auto-generated plate).
+    pos          : (x, y)
+        Centre position of the base plate.
+    max_capacity : int
+        Maximum number of stacked items allowed (not counting the plate itself).
+    base_plate   : pygame.sprite.Sprite | None
+        Any sprite to use as the stack anchor.
+        Pass a pre-built InteractiveObject, BasePlate, or any other Sprite.
+        If None, a transparent invisible sprite is created automatically.
+    plate_size   : (w, h)
+        Size of the auto-generated invisible plate. Ignored when base_plate
+        is supplied explicitly.
     """
 
-    STACK_OVERLAP = 4   # pixels each item overlaps the one below
-
-    def __init__(self, name, image_path, pos, max_capacity):
+    def __init__(self, name, pos, max_capacity,
+                 base_plate=None, plate_size=(64, 64)):
         super().__init__()
-        surf = _load_surface(image_path)
-        self.station_block = InteractiveObject(name, pos, {"default": surf})
-        self.station_block._layer = LAYER_STATION
-        self.station_block.is_locked = True          # tile itself is never dragged
-        self.add(self.station_block, layer=LAYER_STATION)
+        self.name         = name
         self.max_capacity = max_capacity
+        
+        self.__factory = ItemFactory()
+        # Accept any sprite as the anchor, or fall back to an invisible one.
+        if base_plate is not None:
+            self.station_block = base_plate
+        else:
+            self.station_block = self.__factory.create_invisible_plate("invisible plate", pos, plate_size)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+        self.station_block._layer      = LAYER_STATION
+        self.station_block.rect.center = pos
+        self.add(self.station_block, layer=LAYER_STATION)
+
+    # ── Queries ───────────────────────────────────────────────────────────────
 
     def placed_items(self):
         return [s for s in self.sprites() if s is not self.station_block]
@@ -93,6 +106,8 @@ class StackGroup(BaseGroup):
         items = self.placed_items()
         return items[-1] if items else None
 
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
     def _lock_all_except_top(self):
         for item in self.placed_items():
             item.is_locked = True
@@ -101,186 +116,133 @@ class StackGroup(BaseGroup):
             top.is_locked = False
 
     def _restack_all(self):
-        """Re-position every placed item into a neat visual stack."""
-        items     = self.placed_items()
-        base_x    = self.station_block.rect.centerx
-        # Start from the TOP of the station block and build upward
-        current_y = self.station_block.rect.top
+        base_x         = self.station_block.rect.centerx
+        current_bottom = self.station_block.rect.bottom
 
-        for item in items:
-            # Each item sits so its bottom is at current_y + STACK_OVERLAP
-            item.rect.centerx = base_x
-            item.rect.bottom  = current_y + self.STACK_OVERLAP
-            current_y         = item.rect.top    # next item stacks above this one
-            self.change_layer(item, LAYER_FOOD)
+        for item in self.sprites():
+            if item is self.station_block:
+                continue
+            pixel_height      = ItemData.get_prop(item.name, "pixel_height", item.rect.height)
+            item.set_target((base_x, current_bottom), 0.15)
+            # item.rect.centerx = base_x
+            # item.rect.bottom  = current_bottom
+            current_bottom   -= pixel_height
 
         self._lock_all_except_top()
 
-    # ── Input callbacks ───────────────────────────────────────────────────────
+
+    # ── Event handlers ────────────────────────────────────────────────────────
 
     def handle_click(self, sprite):
         if sprite is not self.station_block:
             sprite.on_click()
 
     def handle_drag(self, sprite, pos):
-        if sprite is self.station_block:
-            return
-        super().handle_drag(sprite, pos)
+        if sprite is not self.station_block:
+            super().handle_drag(sprite, pos)
+            print(f"[STACK] after drag: {[s.name for s in self.placed_items()]}, locked={[s.is_locked for s in self.placed_items()]}")
+            self._restack_all()
 
     def handle_drop(self, sprite, target):
+        print(f"[DROP] sprite={sprite.name} target={target.name} can_accept={self.can_accept(sprite)}")
         if not self.can_accept(sprite):
-            print(f"[STACK DROP] Rejected {sprite.name} — full={self.is_full()}")
+            print(f"[STACK] Rejected {sprite.name} — full={self.is_full()}")
             return False
-        self.add(sprite, layer=LAYER_FOOD)
+        self.add(sprite)
         self._restack_all()
-        sprite.on_place()
+        sprite.current_group = self
+        print(f"[STACK] after placing: {[s.name for s in self.placed_items()]}, locked={[s.is_locked for s in self.placed_items()]}")
         return True
 
     def handle_remove(self, sprite):
-        """Called after a successful drop into another group."""
-        if sprite in self.sprites():
-            self.remove(sprite)
+        self.remove(sprite)
+        print(f"[STACK] after remove: {[s.name for s in self.placed_items()]}")
         self._restack_all()
-        sprite.current_group = None
 
-    def _on_snapback(self, sprite):
-        """Re-add (already done by BaseGroup.handle_snapback) then restack."""
+    def handle_snapback(self, sprite):
+        """Re-add sprite to this stack and restack."""
+        self.add(sprite)
+        sprite.current_group = self
         self._restack_all()
-        sprite.on_snapback()
+        # sprite.on_snapback()
 
-    # ── Acceptance ────────────────────────────────────────────────────────────
 
     def can_accept(self, sprite) -> bool:
+        print(f"[ACCEPT] placed={len(self.placed_items())} max={self.max_capacity} items={[s.name for s in self.placed_items()]}")
         return not self.is_full()
 
 
-# ── Grill Group ───────────────────────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+# GrillGroup
+# ─────────────────────────────────────────────────────────────────────────────
 class GrillGroup(StackGroup):
-    """Accepts only grillable items. Click toggles grilling on/off."""
+    def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64)):
+        super().__init__(name, pos, max_capacity, base_plate, plate_size)
 
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("grillable") and not self.is_full()
 
-    def handle_click(self, sprite):
-        if sprite is not self.station_block and sprite.has_tag("grillable"):
-            sprite._is_grilling = not sprite._is_grilling
-            state = "resumed" if sprite._is_grilling else "paused"
-            print(f"[GRILL] {sprite.name} grilling {state}")
+    # def handle_click(self, sprite):
+    #     if sprite is not self.station_block and sprite.has_tag("grillable"):
+    #         sprite._is_grilling = not sprite._is_grilling
+
+    def update(self, dt=0):
+        super().update(dt)
+        for item in self.placed_items():
+            if item.has_tag("grillable"):
+                item.on_cook(dt)
 
 
-# ── Plate Group ───────────────────────────────────────────────────────────────
-
+# ─────────────────────────────────────────────────────────────────────────────
+# PlateGroup
+# ─────────────────────────────────────────────────────────────────────────────
 class PlateGroup(StackGroup):
-    """Accepts any ingredient."""
+    """StackGroup that only accepts ingredients."""
 
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("ingredient") and not self.is_full()
 
 
-# ── Dispenser Group ───────────────────────────────────────────────────────────
-
-class DispenserGroup(BaseGroup):
-    """
-    Fixed tile that holds a *template* item.
-    Dragging the template spawns a fresh clone; the template stays put.
-    Stock is deducted from game_data on each dispense.
-    """
-
-    def __init__(self, name, image_path, pos,
-                 template_item, game_data, item_id,
-                 cost=0, out_group=None):
-        super().__init__()
-        surf = _load_surface(image_path)
-        self.station_block = InteractiveObject(name, pos, {"default": surf})
-        self.station_block._layer   = LAYER_STATION
-        self.station_block.is_locked = True
-        self.add(self.station_block, layer=LAYER_STATION)
-
+# ─────────────────────────────────────────────────────────────────────────────
+# DispenserGroup
+# ─────────────────────────────────────────────────────────────────────────────
+class DispenserGroup(StackGroup):
+    def __init__(self, name, pos, template_item, base_plate=None, plate_size=(64,64)):
+        super().__init__(name, pos, max_capacity=0, base_plate=base_plate, plate_size=plate_size)
+        self.__factory  = ItemFactory()
         self._template  = template_item
-        self._game_data = game_data
-        self._item_id   = item_id
-        self._cost      = cost
-        self._out_group = out_group
-
-        self._template.is_locked = False
+        self._template.is_locked   = False
         self._template.rect.center = self.station_block.rect.center
-        self.add(self._template, layer=LAYER_FOOD)
-
-        self._active_copy = None   # the clone currently being dragged
-
-    # ── Stock helpers ─────────────────────────────────────────────────────────
-
-    def can_dispense(self):
-        return (self._game_data.has_stock(self._item_id) and
-                self._game_data.money >= self._cost)
-
-    def _do_dispense(self, pos):
-        if not self.can_dispense():
-            print(f"[DISPENSER] Cannot dispense {self._item_id}: "
-                  f"stock={self._game_data.get_stock(self._item_id)}, "
-                  f"money={self._game_data.money}")
-            return None
-        self._game_data.use_stock(self._item_id)
-        if self._cost > 0:
-            self._game_data.spend_money(self._cost)
-        clone = self._template.clone(pos)
-        clone.is_locked = False
-        print(f"[DISPENSER] Dispensed {clone.name} | "
-              f"stock left={self._game_data.get_stock(self._item_id)}")
-        return clone
-
-    # ── Input callbacks ───────────────────────────────────────────────────────
-
-    def handle_click(self, sprite):
-        pass
-
+        self.add(self._template)
+        
     def handle_drag(self, sprite, pos):
         if sprite is not self._template:
-            super().handle_drag(sprite, pos)
             return
-
-        # First motion — spawn the clone
-        if self._active_copy is None:
-            clone = self._do_dispense(pos)
-            if clone is None:
-                return                         # out of stock; template stays put
-            self._active_copy = clone
-            clone.current_group = self         # home = this dispenser
-            if self._out_group is not None:
-                self._out_group.add(clone, layer=LAYER_FOOD)
-
-        # Move the clone; keep template pinned to tile
-        self._active_copy.rect.center  = pos
-        self._template.rect.center     = self.station_block.rect.center
-
-    def handle_drop(self, sprite, target):
-        """Dispenser never accepts drops."""
-        return False
-
-    def handle_remove(self, sprite):
-        """Called after clone was successfully dropped into another group."""
-        if sprite is self._active_copy:
-            self._active_copy = None
-        sprite.current_group = None
+        # Respawn template from factory
+        new_template = self.__factory.create(self._template.name, self.station_block.rect.center)
+        new_template.current_group = self
+        self._template = new_template
+        self.add(self._template)
 
     def handle_snapback(self, sprite):
-        """Clone was rejected — destroy it and restore the template."""
-        if sprite is self._active_copy:
-            sprite.kill()
-            self._active_copy = None
-            print(f"[DISPENSER] Snapback — clone of {self._item_id} destroyed")
-        self._template.rect.center = self.station_block.rect.center
-        self._template.is_locked   = False
+        sprite.kill()
+        self._template.set_target(self.station_block.rect.center)
 
-    def stock_count(self):
-        return self._game_data.get_stock(self._item_id)
+    def handle_drop(self, sprite, target):
+        return False
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TrashGroup
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Station Group ─────────────────────────────────────────────────────────────
-
+class TrashGroup(StackGroup):
+    def handle_drop(self, sprite, target):
+        sprite.kill()
+        return True
+# ─────────────────────────────────────────────────────────────────────────────
+# StationGroup
+# ─────────────────────────────────────────────────────────────────────────────
 class StationGroup(BaseGroup):
-    """Generic group that owns a station_block + whatever is placed on it."""
 
     def __init__(self, name, image_path, pos):
         super().__init__()
@@ -298,7 +260,7 @@ class StationGroup(BaseGroup):
         idx = len(self.placed_items())
         item.rect.centerx = self.station_block.rect.centerx
         item.rect.centery = self.station_block.rect.centery - (idx * self.stack_offset)
-        self.add(item, layer=LAYER_FOOD)
+        self.add(item)
 
     def clear_station(self):
         for item in self.placed_items():
