@@ -1,14 +1,14 @@
 """
 hud.py
 ──────
-HUDGroup : Always-visible top bar showing clock, money, and average rating.
+HUDGroup : Always-visible top bar showing night, clock, money, and average rating.
 StationManager owns it and draws it last so it sits above everything.
 
 Layout  (across top of screen, stops before OrderUI panel)
 ──────────────────────────────────────────────────────────
-  ┌────────────────────────────────────────────────┐
-  │  🕐  Hour: 2.5          $  150       ★  3.8   │
-  └────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────┐
+  │  Night 1    🕐  Hour: 2.5      $  150       ★  3.8      │
+  └──────────────────────────────────────────────────────────┘
 """
 
 import pygame
@@ -26,6 +26,9 @@ def _make_bg():
                      (0, theme.HUD_BAR_H - 1),
                      (theme.HUD_BAR_W, theme.HUD_BAR_H - 1), 2)
     return surf
+
+def _make_night(night: int) -> pygame.Surface:
+    return theme.font(22, bold=True).render(f"Night  {night}", True, theme.C_TEXT)
 
 def _make_clock(label: str) -> pygame.Surface:
     return theme.font(22, bold=True).render(f"Hour  {label}", True, theme.C_TEXT)
@@ -55,19 +58,23 @@ class HUDGroup(BaseGroup):
         # Background bar (topleft at 0,0 — full width)
         self.add(StaticUI(_make_bg(), (0, 0), layer=9, name="hud_bg"))
 
-        # Three display sprites — centered at 1/6, 3/6, 5/6 of the bar
+        # Four display sprites — centered at 1/8, 3/8, 5/8, 7/8 of the bar
+        self._night  = StaticUI(_make_night(1),
+                                (theme.HUD_BAR_W * 1 // 8, cy),
+                                layer=10, anchor="center", name="hud_night")
         self._clock  = StaticUI(_make_clock("0"),
-                                (theme.HUD_BAR_W * 1 // 6, cy),
+                                (theme.HUD_BAR_W * 3 // 8, cy),
                                 layer=10, anchor="center", name="hud_clock")
         self._money  = StaticUI(_make_money(0),
-                                (theme.HUD_BAR_W * 3 // 6, cy),
+                                (theme.HUD_BAR_W * 5 // 8, cy),
                                 layer=10, anchor="center", name="hud_money")
         self._rating = StaticUI(_make_rating(0.0),
-                                (theme.HUD_BAR_W * 5 // 6, cy),
+                                (theme.HUD_BAR_W * 7 // 8, cy),
                                 layer=10, anchor="center", name="hud_rating")
-        self.add(self._clock, self._money, self._rating)
+        self.add(self._night, self._clock, self._money, self._rating)
 
     def refresh(self, game_hour, gamedata):
+        self._night.set_surface (_make_night(gamedata.night))
         self._clock.set_surface (_make_clock(game_hour.hour_label))
         self._money.set_surface (_make_money(gamedata.money))
         self._rating.set_surface(_make_rating(gamedata.average_rating))

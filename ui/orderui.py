@@ -6,19 +6,30 @@ Every element is either a StaticUI (locked display) or a UIButton (clickable).
 
 State model
 ───────────
-The OrderUI does **not** keep its own copies of patience or phase.
-_OrderEntry is a thin view over a Customer — CustomerManager owns the ticking
-and phase transitions; the UI only renders what the Customer reports. This
-guarantees the two can never desync.
+The OrderUI keeps **no list of its own**. It reads directly from
+`customer_manager.on_waiting` every frame. Accept/timeout/submit all happen
+on CustomerManager; the UI renders whatever the manager currently says is
+waiting. This means the two literally cannot desync.
 
-Usage
-─────
-    ui = OrderUI()                      # uses theme defaults
-    station.register_group(ui)          # drawn automatically
+Navigation state is tracked by customer identity (not by index), so the
+current selection survives list mutations — e.g. someone three slots ahead
+timing out won't jump your view to a different order.
 
-    ui.add_order(customer)              # called on ACCEPT button
-    result = ui.pop_current()           # on SUBMIT → returns entry
-    ui.update_ui(dt)                    # StationManager calls this once/frame
+Accept flow
+───────────
+    station calls customer_manager.take_order()
+    → UI picks up the new waiting customer automatically on the next frame
+
+Submit flow
+───────────
+    entry = order_ui.pop_current()   # internally calls finish_order(customer)
+    → uses identity matching, so the correct customer is removed
+      regardless of which index is currently shown
+
+Timeout flow
+────────────
+    CustomerManager.update_waiting(dt) evicts expired customers
+    → UI picks up the shorter list automatically on the next frame
 """
 
 from __future__ import annotations
@@ -108,16 +119,13 @@ def _make_row(item_id: str | None, w: int) -> pygame.Surface:
 
 class _OrderEntry:
     """
-    Thin view onto a Customer — all mutable state lives on the Customer itself.
-
-    The UI does not tick patience. CustomerManager does. The UI reads.
+    Thin view onto a Customer — the UI creates these on demand when it needs
+    to hand something off to a station (e.g. AssembleStation._submit). All
+    mutable state lives on the Customer itself.
     """
 
     def __init__(self, customer):
         self.customer = customer
-        # Snapshot: how much ordering-patience remained at accept-time.
-        # Used later by the rating formula in AssembleStation._submit.
-        self.ordering_ratio = customer.ordering_ratio
 
     @property
     def image(self):
@@ -126,6 +134,11 @@ class _OrderEntry:
     @property
     def items(self) -> list[str]:
         return self.customer.order
+
+    @property
+    def ordering_ratio(self) -> float:
+        """Snapshot captured by CustomerManager.take_order() at accept-time."""
+        return getattr(self.customer, "ordering_ratio_at_accept", 0.0) or 0.0
 
     @property
     def ratio(self) -> float:
@@ -155,15 +168,22 @@ class OrderUI(BaseGroup):
     """
 
     def __init__(self,
+                 customer_manager,
                  x: int | None = None,
                  y: int | None = None,
                  rows: int | None = None):
         super().__init__()
-        self._ox     = theme.ORDER_PANEL_X if x    is None else x
-        self._oy     = theme.ORDER_PANEL_Y if y    is None else y
-        self._rows   = theme.ORDER_ROWS    if rows is None else rows
-        self._orders: list[_OrderEntry] = []
-        self._index  = 0
+        self._cm    = customer_manager
+        self._ox    = theme.ORDER_PANEL_X if x    is None else x
+        self._oy    = theme.ORDER_PANEL_Y if y    is None else y
+        self._rows  = theme.ORDER_ROWS    if rows is None else rows
+
+        # Navigation is tracked by customer identity, not by index.
+        # This makes selection survive list mutations (timeouts, submits
+        # from other stations, etc.).
+        self._current_customer     = None
+        self._last_customer_ids    = []   # sentinel: detect list changes frame-to-frame
+        self._last_phase           = None
 
         panel_h = TOP_H + self._rows * ROW_H + FOOTER_H
         blank   = pygame.Surface((1, 1), pygame.SRCALPHA)
@@ -214,46 +234,48 @@ class OrderUI(BaseGroup):
             (self._ox + PANEL_W - 50, self._oy + 8),
             self._go_right, anchor="topleft", layer=4,
         )
-        # self._btn_finish = UIButton(
-        #     "order_finish",
-        #     theme.button_surface("FINISH ORDER",
-        #                          w=PANEL_W - 24, h=FOOTER_H - 12,
-        #                          color=theme.C_BTN, text_color=theme.C_BTN_TEXT),
-        #     (self._ox + 12, self._oy + TOP_H + self._rows * ROW_H + 6),
-        #     self._on_finish, anchor="topleft", layer=4,
-        # )
         self.add(self._btn_left, self._btn_right)
 
         self._refresh()
 
+    # ── Internal: single source of truth ──────────────────────────────────────
+
+    @property
+    def _customers(self) -> list:
+        """Live view of the manager's waiting queue."""
+        return self._cm.on_waiting
+
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def add_order(self, customer) -> None:
-        self._orders.append(_OrderEntry(customer))
-        self._refresh()
-
-    def finish(self) -> dict | None:
-        """Remove current order and return {"items": [...], "image": Surface}."""
-        if not self._orders:
-            return None
-        entry = self._orders.pop(self._index)
-        self._index = min(self._index, max(0, len(self._orders) - 1))
-        self._refresh()
-        return {"items": entry.items, "image": entry.image}
-
     def is_empty(self) -> bool:
-        return len(self._orders) == 0
+        return not self._customers
 
     def peek_current(self):
         """Read current order without removing it (returns _OrderEntry or None)."""
-        return self._orders[self._index] if self._orders else None
+        customers = self._customers
+        if not customers:
+            self._current_customer = None
+            return None
+        # Repair selection if the currently-shown customer is gone (e.g. timeout).
+        if self._current_customer not in customers:
+            self._current_customer = customers[0]
+        return _OrderEntry(self._current_customer)
 
     def pop_current(self):
-        """Remove and return current order (called by AssembleStation on submit)."""
-        if not self._orders:
+        """
+        Finish the current order — removes from CustomerManager by identity.
+        Returns the _OrderEntry (for stats), or None if nothing is shown.
+
+        Identity-matched removal fixes the old FIFO desync: whichever order
+        the player is viewing is the one that gets finished.
+        """
+        entry = self.peek_current()
+        if entry is None:
             return None
-        entry = self._orders.pop(self._index)
-        self._index = min(self._index, max(0, len(self._orders) - 1))
+        self._cm.finish_order(entry.customer)
+        # _refresh will run on the next update_ui via the list-change check,
+        # but do it immediately so the UI is consistent within this frame.
+        self._current_customer = None
         self._refresh()
         return entry
 
@@ -261,38 +283,56 @@ class OrderUI(BaseGroup):
 
     def update(self, dt=0):
         # Deliberately empty — stations each call group.update and we don't
-        # want patience/display ticked N times. StationManager calls update_ui.
+        # want the display ticked N times. StationManager calls update_ui.
         pass
 
     def update_ui(self, dt):
         """
         Call exactly once per frame from StationManager.
-        Redraws the patience bar (and, on phase flips, the whole panel).
+
+        Detects three kinds of change:
+          1. List mutation (accept / submit / timeout) → full refresh.
+          2. Phase flip on the currently-shown order   → full refresh.
+          3. Normal tick                                → patience bar only.
         """
-        if not self._orders:
-            return
+        customers = self._customers
+        cur_ids   = [id(c) for c in customers]
 
-        entry = self._orders[self._index]
-
-        # Detect a phase flip on the currently-shown order → full refresh so
-        # the label text switches from "Ordering" to "Waiting" cleanly.
-        cur_phase = entry.phase
-        if getattr(self, "_last_phase", None) != cur_phase:
-            self._last_phase = cur_phase
+        # (1) List changed — accept / submit / timeout
+        if cur_ids != self._last_customer_ids:
+            self._last_customer_ids = cur_ids
             self._refresh()
             return
 
-        # Normal frame — just redraw the bar surface.
+        if not customers:
+            return
+
+        entry = self.peek_current()
+        if entry is None:
+            return
+
+        # (2) Phase flipped on the shown order
+        if self._last_phase != entry.phase:
+            self._refresh()
+            return
+
+        # (3) Normal frame — redraw the bar surface only
         self._pat_bar.set_surface(
             _make_patience_bar(entry.ratio, PANEL_W - 32, entry.phase, entry.secs)
         )
 
-    # ── Refresh (rebuild dynamic sprites when order changes) ──────────────────
+    # ── Refresh (rebuild dynamic sprites when state changes) ──────────────────
 
     def _refresh(self):
-        blank = pygame.Surface((1, 1), pygame.SRCALPHA)
+        blank     = pygame.Surface((1, 1), pygame.SRCALPHA)
+        customers = self._customers
 
-        if not self._orders:
+        # Keep the "last seen list" sentinel in sync so update_ui doesn't
+        # trigger a redundant refresh right after this one.
+        self._last_customer_ids = [id(c) for c in customers]
+
+        if not customers:
+            self._current_customer = None
             self._nav_lbl.set_surface(blank)
             self._avatar.set_surface(blank)
             self._pat_bar.set_surface(blank)
@@ -303,19 +343,24 @@ class OrderUI(BaseGroup):
             self._last_phase = None
             return
 
-        e     = self._orders[self._index]
-        total = len(self._orders)
+        # Repair selection if needed (customer was removed while we were looking at them).
+        if self._current_customer not in customers:
+            self._current_customer = customers[0]
+
+        idx   = customers.index(self._current_customer)
+        total = len(customers)
+        e     = _OrderEntry(self._current_customer)
 
         # Nav label, avatar, patience bar — each is a StaticUI we just re-skin.
-        self._nav_lbl.set_surface(_make_nav_label(self._index, total, PANEL_W))
+        self._nav_lbl.set_surface(_make_nav_label(idx, total, PANEL_W))
         self._avatar.set_surface(_make_avatar(e.image))
         self._pat_bar.set_surface(
             _make_patience_bar(e.ratio, PANEL_W - 32, e.phase, e.secs)
         )
 
         # Arrow buttons (dim when at edge) — UIButton exposes .image directly.
-        self._btn_left.image  = _make_arrow(-1, self._index > 0)
-        self._btn_right.image = _make_arrow(+1, self._index < total - 1)
+        self._btn_left.image  = _make_arrow(-1, idx > 0)
+        self._btn_right.image = _make_arrow(+1, idx < total - 1)
 
         # Rows — items stored bottom→top, displayed top→bottom
         display = list(reversed(e.items))
@@ -328,17 +373,22 @@ class OrderUI(BaseGroup):
     # ── Navigation ────────────────────────────────────────────────────────────
 
     def _go_left(self):
-        if self._index > 0:
-            self._index -= 1
+        customers = self._customers
+        if not customers or self._current_customer not in customers:
+            return
+        idx = customers.index(self._current_customer)
+        if idx > 0:
+            self._current_customer = customers[idx - 1]
             self._refresh()
 
     def _go_right(self):
-        if self._index < len(self._orders) - 1:
-            self._index += 1
+        customers = self._customers
+        if not customers or self._current_customer not in customers:
+            return
+        idx = customers.index(self._current_customer)
+        if idx < len(customers) - 1:
+            self._current_customer = customers[idx + 1]
             self._refresh()
-
-    def _on_finish(self):
-        self.finish()
 
     # ── handle_click forwarded from InputHandler ──────────────────────────────
 

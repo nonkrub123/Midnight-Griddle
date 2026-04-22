@@ -36,9 +36,9 @@ HUD_BAR_H = 56
 
 # ── Station positions ─────────────────────────────────────────────────────────
 
-POS_PLATE = (800, 550)
+POS_PLATE = (925, 700)
 POS_GRILL = (500, 500)
-POS_TRAY  = (250, 800)
+POS_TRAY  = (220, 800)
 
 # POS_DISPENSER = {
 #     "meat":     (250, 400),
@@ -83,11 +83,11 @@ ORDER_SUMMARY_ROWS = 8
 
 # Restock panel
 POS_RESTOCK      = (40, 80)
-RESTOCK_W        = 420
-RESTOCK_ROW_H    = 72
-RESTOCK_TITLE_H  = 44
-RESTOCK_BTN_W    = 90
-RESTOCK_BTN_H    = 40
+RESTOCK_W        = 600
+RESTOCK_ROW_H    = 100
+RESTOCK_TITLE_H  = 60
+RESTOCK_BTN_W    = 130
+RESTOCK_BTN_H    = 56
 
 # Nav buttons (bottom-left)
 POS_NAV = {
@@ -139,7 +139,7 @@ C_GAME_BG = (30, 30, 30)
 
 FONT_FAMILY = "serif"
 
-def font(size: int = 16, bold: bool = False):
+def font(size: int = 20, bold: bool = False):
     """Centralized font accessor. Change FONT_FAMILY once, whole UI updates."""
     pygame.font.init()
     return pygame.font.SysFont(FONT_FAMILY, size, bold=bold)
@@ -152,7 +152,7 @@ def button_surface(label: str,
                    h: int = 60,
                    color=None,
                    text_color=None,
-                   font_size: int = 18,
+                   font_size: int = 22,
                    bold: bool = True) -> pygame.Surface:
     """
     Canonical button surface — flat fill, bordered, centered label.

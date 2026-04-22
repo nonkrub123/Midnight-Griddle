@@ -20,31 +20,31 @@ class InteractiveObject(pygame.sprite.Sprite):
         self._layer = LAYER_FOOD
 
         # Smooth movement
-        self.target_pos    = None
-        self.start_pos     = pygame.Vector2(pos)
+        self.__target_pos    = None
+        self.__start_pos     = pygame.Vector2(pos)
         self.move_timer    = 0
         self.move_duration = 0
 
     # ── Movement ──────────────────────────────────────────────────────────────
 
     def set_target(self, pos, duration=0.2):
-        self.target_pos    = pygame.Vector2(pos)
-        self.start_pos     = pygame.Vector2(self.rect.center)
+        self.__target_pos    = pygame.Vector2(pos)
+        self.__start_pos     = pygame.Vector2(self.rect.center)
         self.move_timer    = 0
         self.move_duration = duration
 
     def update(self, dt=0):
-        if self.target_pos:
+        if self.__target_pos:
             self._move(dt)
 
     def _move(self, dt):
         self.move_timer += dt
         t = self.move_timer / self.move_duration if self.move_duration > 0 else 1.0
         if t >= 1.0:
-            self.rect.center = (int(self.target_pos.x), int(self.target_pos.y))
-            self.target_pos  = None
+            self.rect.center = (int(self.__target_pos.x), int(self.__target_pos.y))
+            self.__target_pos  = None
         else:
-            new_pos = self.start_pos.lerp(self.target_pos, t)
+            new_pos = self.__start_pos.lerp(self.__target_pos, t)
             self.rect.center = (int(new_pos.x), int(new_pos.y))
 
     # ── Tag lookup ────────────────────────────────────────────────────────────
@@ -64,8 +64,8 @@ class InteractiveObject(pygame.sprite.Sprite):
         """Return a fresh copy of this sprite placed at *pos*."""
         new = copy.copy(self)
         new.rect          = self.image.get_rect(center=pos)
-        new.start_pos     = pygame.Vector2(pos)
-        new.target_pos    = None
+        new.__start_pos     = pygame.Vector2(pos)
+        new.__target_pos    = None
         new.move_timer    = 0
         new.is_locked     = False
         new.current_group = None

@@ -67,6 +67,7 @@ class Customer:
         # Single source of truth for phase: "ordering" | "waiting" | "done"
         self.phase   = "ordering"
         self.is_late = False
+        self.ordering_ratio_at_accept: float | None = None
 
     # Convenience read-throughs for rating / UI code
     @property
@@ -128,15 +129,11 @@ class CustomerManager:
     # ── Main actions ──────────────────────────────────────────────────────────
 
     def take_order(self) -> Customer | None:
-        """
-        Move the front ordering customer → waiting queue.
-        Flips their phase to "waiting" so OrderUI / rating code stay in sync.
-        Returns the Customer (or None if ordering queue is empty).
-        """
         if not self._ordering:
             return None
         customer       = self._ordering.popleft()
         customer.phase = "waiting"
+        customer.ordering_ratio_at_accept = customer.ordering_ratio
         self._waiting.append(customer)
         return customer
 
@@ -162,17 +159,29 @@ class CustomerManager:
         """Spawn timer only — patience is ticked via the dedicated methods."""
         self._try_spawn(dt)
 
-    def update_ordering(self, dt: float):
-        """Tick only the ordering queue patience."""
-        for c in self._ordering:
+    def update_ordering(self, dt: float) -> list[Customer]:
+        """Tick ordering-queue patience. Returns customers who expired this frame."""
+        expired: list[Customer] = []
+        for c in list(self._ordering):
             c.patience_ordering = max(0.0, c.patience_ordering - dt)
-            c.is_late = c.patience_ordering <= 0
+            if c.patience_ordering <= 0:
+                c.phase   = "abandoned"
+                c.is_late = True
+                self._ordering.remove(c)
+                expired.append(c)
+        return expired
 
-    def update_waiting(self, dt: float):
-        """Tick only the waiting queue patience."""
-        for c in self._waiting:
+    def update_waiting(self, dt: float) -> list[Customer]:
+        """Tick waiting-queue patience. Returns customers who expired this frame."""
+        expired: list[Customer] = []
+        for c in list(self._waiting):
             c.patience_waiting = max(0.0, c.patience_waiting - dt)
-            c.is_late = c.patience_waiting <= 0
+            if c.patience_waiting <= 0:
+                c.phase   = "abandoned"
+                c.is_late = True
+                self._waiting.remove(c)
+                expired.append(c)
+        return expired
 
     def _try_spawn(self, dt: float):
         if len(self._ordering) < self._max_capacity:

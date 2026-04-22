@@ -68,7 +68,7 @@ class InputHandler:
                 self.held_group.handle_drag(self.held_item, pos)
 
     def _on_mouse_up(self, pos, *groups):
-        print(f"This is pos {pos}")
+        # print(f"This is pos {pos}")
         if not self.held_item:
             return
         # if not self.held_item or not self.held_group:

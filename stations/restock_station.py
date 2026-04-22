@@ -27,7 +27,7 @@ def _make_title(w):
     pygame.draw.line(s, theme.C_BORDER,
                      (0, theme.RESTOCK_TITLE_H - 1),
                      (w, theme.RESTOCK_TITLE_H - 1), 1)
-    txt = theme.font(20, bold=True).render("RESTOCK", True, theme.C_TITLE)
+    txt = theme.font(26, bold=True).render("RESTOCK", True, theme.C_TITLE)
     s.blit(txt, txt.get_rect(center=(w // 2, theme.RESTOCK_TITLE_H // 2)))
     return s
 
@@ -40,20 +40,23 @@ def _make_row(item_id, stock, w):
                      (w, theme.RESTOCK_ROW_H - 1), 1)
 
     # Icon
+    icon_size = 72
+    icon_x    = 16
     data = ItemData.get_item(item_id)
     if data:
         img_name = data["state_imgs"].get("default",
                         next(iter(data["state_imgs"].values())))
         img      = ItemData.load_img(img_name, data["type"])
-        img      = pygame.transform.smoothscale(img, (48, 48))
-        s.blit(img, (12, (theme.RESTOCK_ROW_H - 48) // 2))
+        img      = pygame.transform.smoothscale(img, (icon_size, icon_size))
+        s.blit(img, (icon_x, (theme.RESTOCK_ROW_H - icon_size) // 2))
 
     # Name + stock/price
-    name  = ItemData.get_prop(item_id, "display_name", item_id)
-    price = ItemData.get_prop(item_id, "buy_price", 0)
-    s.blit(theme.font(17, bold=True).render(name, True, theme.C_TEXT), (72, 10))
-    s.blit(theme.font(14).render(f"x {stock}      ${price}", True, theme.C_SUBTEXT),
-           (72, 36))
+    text_x = icon_x + icon_size + 16     # 104
+    name   = ItemData.get_prop(item_id, "display_name", item_id)
+    price  = ItemData.get_prop(item_id, "buy_price", 0)
+    s.blit(theme.font(22, bold=True).render(name, True, theme.C_TEXT), (text_x, 16))
+    s.blit(theme.font(18).render(f"x {stock}      ${price}", True, theme.C_SUBTEXT),
+           (text_x, 56))
     return s
 
 
@@ -91,8 +94,8 @@ class RestockStation(Station):
                                      w=theme.RESTOCK_BTN_W,
                                      h=theme.RESTOCK_BTN_H,
                                      color=theme.C_BTN_ACCEPT,
-                                     font_size=16),
-                (ox + w - theme.RESTOCK_BTN_W - 12,
+                                     font_size=20),
+                (ox + w - theme.RESTOCK_BTN_W - 16,
                  row_y + (row_h - theme.RESTOCK_BTN_H) // 2),
                 lambda iid=item_id: self._buy(iid),
                 anchor="topleft", layer=3,

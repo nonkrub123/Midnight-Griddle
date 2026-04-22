@@ -31,7 +31,7 @@ class StationManager:
         self.customer_manager = CustomerManager(max_capacity=5,
                                                 min_spawn_time=10.0,
                                                 max_spawn_time=20.0)
-        self.order_ui = OrderUI()       # uses theme defaults
+        self.order_ui = OrderUI(customer_manager=self.customer_manager)
         self.hud      = HUDGroup()
 
         # Tray travels between GrillStation and AssembleStation
@@ -40,7 +40,7 @@ class StationManager:
             name         = "tray",
             pos          = theme.POS_TRAY,
             max_capacity = 10,
-            base_plate   = factory.create_base_plate("base_plate", theme.POS_TRAY),
+            base_plate   = factory.create_base_plate("plate", theme.POS_TRAY),
         )
 
         # ── Stations ──────────────────────────────────────────────────────────
@@ -90,9 +90,12 @@ class StationManager:
         self.game_hour.update(dt)
 
         # ── Single tick point for the customer model ──────────────────────────
-        self.customer_manager.update(dt)            # spawn
-        self.customer_manager.update_ordering(dt)   # ordering patience
-        self.customer_manager.update_waiting(dt)    # waiting  patience
+        self.customer_manager.update(dt)                       # spawn
+        expired  = self.customer_manager.update_ordering(dt)   # ordering patience
+        expired += self.customer_manager.update_waiting(dt)    # waiting  patience
+
+        for customer in expired:
+            self.stat_tracker.log_satisfaction(0)
 
         customer_count = (len(self.customer_manager.on_ordering)
                         + len(self.customer_manager.on_waiting))

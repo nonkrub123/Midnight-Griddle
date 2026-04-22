@@ -79,12 +79,12 @@ class StackGroup(BaseGroup):
             top.is_locked = False
 
     def _restack_all(self):
-        base_x         = self.station_block.rect.centerx
-        current_bottom = self.station_block.rect.bottom
-        for item in self.placed_items():                # ← was: self.sprites() with a skip
+        base_x   = self.station_block.rect.centerx
+        center_y = self.station_block.rect.centery
+        for item in self.placed_items():
             pixel_height = ItemData.get_prop(item.name, "pixel_height", item.rect.height)
-            item.set_target((base_x, current_bottom), 0.15)
-            current_bottom -= pixel_height
+            item.set_target((base_x, center_y), 0.15)
+            center_y -= pixel_height
         self._lock_all_except_top()
 
     def handle_click(self, sprite):

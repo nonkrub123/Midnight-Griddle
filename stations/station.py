@@ -80,9 +80,7 @@ class OrderStation(Station):
         self._group.add(self._customer_spr)
 
     def _accept(self):
-        customer = self._cm.take_order()
-        if customer:
-            self._order_ui.add_order(customer)
+        self._cm.take_order()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -99,7 +97,7 @@ class GrillStation(Station):
         for i in range(12):
             self.grill_list.append(GrillGroup(
             "grill", self.grill_list_pos[i], max_capacity=1,
-            base_plate=None, plate_size=(250,150)),
+            base_plate=None, plate_size=(324,174)),
         )
             # theme.POS_GRILL
         
@@ -112,7 +110,7 @@ class GrillStation(Station):
                                                       theme.POS_DISPENSER["meat"]),
         )
 
-        self.trash = TrashGroup("trash", theme.POS_TRASH, 1, factory.create_base_plate("plate", theme.POS_TRASH))
+        self.trash = TrashGroup("trash", theme.POS_TRASH, 1, factory.create_base_plate("trash", theme.POS_TRASH))
         self.tray = tray
 
         for i in range(12):
@@ -234,7 +232,7 @@ class AssembleStation(Station):
         # ── Plate ─────────────────────────────────────────────────────────────
         self.plate = PlateGroup(
             "plate", theme.POS_PLATE, max_capacity=10,
-            base_plate=factory.create("plate", pos=theme.POS_PLATE),
+            base_plate=factory.create("redplate", pos=theme.POS_PLATE),
         )
 
         # ── Ingredient dispensers ─────────────────────────────────────────────
@@ -278,7 +276,7 @@ class AssembleStation(Station):
         self.register_group(self.tray)
         self.register_group(self.plate)
         self.register_group(self.order_summary)
-        self.register_group(order_ui)
+        self.register_group(self._order_ui)
         self.register_group(self._btn_group)
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -322,8 +320,7 @@ class AssembleStation(Station):
         stars = "*" * rating + "-" * (5 - rating)
         self._flash(f"Served!  {stars}  ({accuracy_pct:.0f}%)", color=theme.C_FLASH_OK)
 
-        self._order_ui.pop_current()
-        self._customer_manager.finish_order()
+        self._order_ui.pop_current()   # ← this now removes from CustomerManager too
         self.plate.clear()
 
     # ── Feedback flash helper ─────────────────────────────────────────────────
