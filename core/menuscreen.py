@@ -1,13 +1,19 @@
-from ui.interactive import StaticUI, UIButton
+from core.settings import *
+from stations.station import *
+from ui.interactive import *
+import time
+import pygame
+from stations.stationmanager import *
+from core.stat_viewer import show_stat
+from core.inputhandler import InputHandler
 from ui.group import BaseGroup
 import ui.theme as theme
-from core.stat_viewer import show_stat
-import pygame
-from core.settings import *
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MenuScreen — reusable centered panel with title + vertical button list
+# ─────────────────────────────────────────────────────────────────────────────
 class MenuScreen(BaseGroup):
-    """Simple centered panel with a title and a vertical list of buttons."""
-
     def __init__(self, title, buttons):
         """buttons = [(label, callback), ...]"""
         super().__init__()
@@ -22,7 +28,7 @@ class MenuScreen(BaseGroup):
         self.add(StaticUI(title_surf, (GAME_W // 2, 280),
                           layer=2, anchor="center"))
 
-        # Buttons stacked vertically
+        # Buttons
         btn_w, btn_h, gap = 360, 60, 20
         start_y = 400
         for i, (label, cb) in enumerate(buttons):
@@ -34,3 +40,5 @@ class MenuScreen(BaseGroup):
                 cb,
                 anchor="center", layer=3,
             ))
+
+

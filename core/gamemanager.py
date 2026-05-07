@@ -45,9 +45,10 @@ class GameManager:
 
     def _build_menu(self):
         self.menu = MenuScreen("BURGER SHIFT", [
-            ("START SHIFT", self._start_game),
-            ("VIEW STATS",  show_stat),
-            ("QUIT",        self._quit),
+            ("CONTINUE SHIFT", self._continue_game),
+            ("NEW SHIFT",      self._new_game),
+            ("VIEW STATS",     show_stat),
+            ("QUIT",           self._quit),
         ])
 
     def _build_pause(self):
@@ -64,15 +65,27 @@ class GameManager:
         ])
 
     def _build_complete(self):
+        night = self.gamedata.night
         self.menu = MenuScreen("SHIFT COMPLETE", [
             ("VIEW STATS",  show_stat),
+            (f"Continue at night {night}", self._continue_game),
             ("RETURN HOME", self._return_home),
         ])
 
     # ── State transitions ────────────────────────────────────────────────
 
-    def _start_game(self):
-        # Fresh shift: rebuild station manager so hour/customers reset
+    def _continue_game(self):
+        """Resume with existing gamedata — no reset."""
+        self.station_manager = StationManager(
+            self.game_wrapper, self._on_station_switch, self.gamedata
+        )
+        self.gamedata.init_new_game()
+        self.__state = "playing"
+        self.menu    = None
+
+    def _new_game(self):
+        """Wipe gamedata then start fresh."""
+        self.gamedata.restart_data()
         self.station_manager = StationManager(
             self.game_wrapper, self._on_station_switch, self.gamedata
         )
@@ -156,12 +169,13 @@ class GameManager:
         self.update()
 
         # End-of-shift checks
-        if self.station_manager.game_hour.is_over:
+        if self.gamedata.game_hour.is_over:
+            self.gamedata.next_night()
             self._build_complete()
             self.__state = "complete"
             return
 
-        if len(self.gamedata._ratings) >= 3 and self.gamedata.average_rating < 2:
+        if self.gamedata.average_rating < 2:
             self._build_gameover()
             self.__state = "gameover"
             self.gamedata.restart_data()

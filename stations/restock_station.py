@@ -40,18 +40,19 @@ def _make_row(item_id, stock, w):
                      (w, theme.RESTOCK_ROW_H - 1), 1)
 
     # Icon
-    icon_size = 72
+    icon_size_x = 128
+    icon_size_y = 72
     icon_x    = 16
     data = ItemData.get_item(item_id)
     if data:
         img_name = data["state_imgs"].get("default",
                         next(iter(data["state_imgs"].values())))
         img      = ItemData.load_img(img_name, data["type"])
-        img      = pygame.transform.smoothscale(img, (icon_size, icon_size))
-        s.blit(img, (icon_x, (theme.RESTOCK_ROW_H - icon_size) // 2))
+        img      = pygame.transform.smoothscale(img, (icon_size_x, icon_size_y))
+        s.blit(img, (icon_x, (theme.RESTOCK_ROW_H - icon_size_y) // 2))
 
     # Name + stock/price
-    text_x = icon_x + icon_size + 16     # 104
+    text_x = icon_x + icon_size_x + 16     # 104
     name   = ItemData.get_prop(item_id, "display_name", item_id)
     price  = ItemData.get_prop(item_id, "buy_price", 0)
     s.blit(theme.font(22, bold=True).render(name, True, theme.C_TEXT), (text_x, 16))
@@ -69,6 +70,7 @@ class RestockStation(Station):
         self._gamedata = gamedata
         self._group    = BaseGroup()
         self._rows     = {}
+        self._last_stock = {}
 
         ox, oy  = theme.POS_RESTOCK
         w       = theme.RESTOCK_W
@@ -102,6 +104,15 @@ class RestockStation(Station):
             ))
 
         self.register_group(self._group)
+
+    def update(self, dt=0):
+        for item_id, row in self._rows.items():
+            current = self._gamedata.get_stock(item_id)
+            if current != self._last_stock.get(item_id, -1):
+                row.set_surface(
+                    _make_row(item_id, current, theme.RESTOCK_W)
+                )
+                self._last_stock[item_id] = current
 
     def _buy(self, item_id):
         if self._gamedata.restock(item_id, 1):

@@ -44,7 +44,8 @@ class BaseGroup(pygame.sprite.LayeredUpdates):
 # StackGroup
 # ─────────────────────────────────────────────────────────────────────────────
 class StackGroup(BaseGroup):
-    def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64)):
+    def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64),
+                 hitbox_size=None):
         super().__init__()
         self.name         = name
         self.max_capacity = max_capacity
@@ -59,10 +60,21 @@ class StackGroup(BaseGroup):
         self.station_block.rect.center = pos
         self.add(self.station_block, layer=LAYER_STATION)
 
+        # ── optional hitbox ──────────────────────────────────────────────────
+        if hitbox_size is not None:
+            self._top_hitbox = self.__factory.create_invisible_plate("stack_top_hitbox", pos, hitbox_size)
+            self._top_hitbox._layer = LAYER_STATION
+            self.add(self._top_hitbox, layer=LAYER_STATION)
+        else:
+            self._top_hitbox = None
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
     def placed_items(self):
         return [s for s in self.sprites()
                 if s is not self.station_block
-                and isinstance(s, InteractiveObject)]   # excludes StaticUI / _StockLabel
+                and s is not self._top_hitbox
+                and isinstance(s, InteractiveObject)]
 
     def is_full(self):
         return len(self.placed_items()) >= self.max_capacity
@@ -78,23 +90,31 @@ class StackGroup(BaseGroup):
         if top:
             top.is_locked = False
 
-    def _restack_all(self):
+    def _restack_all(self, exclude=None):
         base_x   = self.station_block.rect.centerx
         center_y = self.station_block.rect.centery
-        for item in self.placed_items():
+        items    = [i for i in self.placed_items() if i is not exclude]  # ← exclude dragged item
+
+        for item in items:
             pixel_height = ItemData.get_prop(item.name, "pixel_height", item.rect.height)
             item.set_target((base_x, center_y), 0.15)
             center_y -= pixel_height
+
         self._lock_all_except_top()
 
+        if self._top_hitbox is not None:
+            self._top_hitbox.rect.centerx = base_x
+            self._top_hitbox.rect.centery = center_y
+    # ── event handlers ───────────────────────────────────────────────────────
+
     def handle_click(self, sprite):
-        if sprite is not self.station_block:
+        if sprite is not self.station_block and sprite is not self._top_hitbox:
             sprite.on_click()
 
     def handle_drag(self, sprite, pos):
-        if sprite is not self.station_block:
+        if sprite is not self.station_block and sprite is not self._top_hitbox:
             super().handle_drag(sprite, pos)
-            self._restack_all()
+            self._restack_all(exclude=sprite)  # ← pass the dragged item
 
     def handle_drop(self, sprite, target):
         if not self.can_accept(sprite):
@@ -122,7 +142,7 @@ class StackGroup(BaseGroup):
 # ─────────────────────────────────────────────────────────────────────────────
 class GrillGroup(StackGroup):
     def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64)):
-        super().__init__(name, pos, max_capacity, base_plate, plate_size)
+        super().__init__(name, pos, max_capacity, base_plate, plate_size)  # no hitbox
 
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("grillable") and not self.is_full()
@@ -138,25 +158,25 @@ class GrillGroup(StackGroup):
 # PlateGroup
 # ─────────────────────────────────────────────────────────────────────────────
 class PlateGroup(StackGroup):
-    """StackGroup that only accepts ingredients."""
+    def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64),
+                 hitbox_size=(64, 32)):  # ← small hitbox floating above stack
+        super().__init__(name, pos, max_capacity, base_plate, plate_size, hitbox_size)
+
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("ingredient") and not self.is_full()
 
     def get_item_names(self) -> list[str]:
-        """Return item names bottom → top (matches order format)."""
-        return [s.name for s in self.placed_items()]
+        return [item.name for item in self.placed_items()]
 
     def get_items_with_state(self) -> list[dict]:
-        """
-        Return item info bottom → top.
-        Each dict: {"name": str, "cook_state": str | None}
-        cook_state is only set for GrillableItems (e.g. "raw", "cooked", "burnt").
-        """
         result = []
-        for s in self.placed_items():
+        for item in self.placed_items():
+            cook_state = None
+            if ItemData.get_prop(item.name, "grillable", False):
+                cook_state = item._cook_state
             result.append({
-                "name":       s.name,
-                "cook_state": getattr(s, "_cook_state", None),
+                "name":       item.name,
+                "cook_state": cook_state
             })
         return result
 
@@ -167,14 +187,14 @@ class PlateGroup(StackGroup):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TrayGroup
-# Shared between GrillStation and AssembleStation.
-# Accepts any ingredient (including grillables that have ingredient=True).
 # ─────────────────────────────────────────────────────────────────────────────
 class TrayGroup(StackGroup):
-    """Tray that carries items from the grill to the assembly station."""
+    def __init__(self, name, pos, max_capacity, base_plate=None, plate_size=(64, 64),
+                 hitbox_size=(64, 32)):  # ← small hitbox floating above stack
+        super().__init__(name, pos, max_capacity, base_plate, plate_size, hitbox_size)
+
     def can_accept(self, sprite) -> bool:
         return sprite.has_tag("ingredient") and not self.is_full()
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _StockLabel
@@ -236,13 +256,13 @@ class DispenserGroup(StackGroup):
             return
         self._gamedata.use_stock(self._item_id)
 
-        super().handle_drag(sprite, pos)   # ← ADD THIS: kills old template, sets current_group = self
-
-        # Spawn a fresh template in the dispenser
+        # Spawn replacement BEFORE super() kills the old template
         new_template = self._factory.create(self._item_id, self.station_block.rect.center)
         self._template = new_template
         self.add(self._template)
         self._update_label()
+
+        super().handle_drag(sprite, pos)  # now kills the dragged copy
 
     def handle_snapback(self, sprite):
         sprite.kill()
@@ -251,6 +271,12 @@ class DispenserGroup(StackGroup):
         self._update_label()
 
     def handle_drop(self, sprite, target):
+        if sprite.name == self._template.name:
+            if sprite._cook_state == self._template._cook_state:
+                sprite.kill()
+                self._gamedata.add_stock(self._template.name, 1)
+                return True
+        
         return False
 
     def update(self, dt=0):

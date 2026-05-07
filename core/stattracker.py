@@ -46,49 +46,6 @@ _HEADERS = {
     INGREDIENTS_CSV:  ["game_hour", "item_id", "quantity", "revenue", "real_elapsed_s"]
 }
 
-def _append(filepath, row):
-    is_new = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
-    with open(filepath, "a", newline="") as f:
-        w = csv.writer(f)
-        if is_new:
-            w.writerow(_HEADERS[filepath])
-        w.writerow(row)
-
-
-# ── GameHour ──────────────────────────────────────────────────────────────────
-
-class GameHour:
-    """
-    real_seconds_per_hour : real seconds = one game hour  (default 120)
-    total_hours           : shift length in game hours     (default 6)
-    """
-    def __init__(self, real_seconds_per_hour=120.0, total_hours=6.0):
-        self._rate        = real_seconds_per_hour
-        self._total_hours = total_hours
-        self._elapsed     = 0.0
-
-    def update(self, dt):
-        if not self.is_over:
-            self._elapsed += dt
-
-    @property
-    def current_hour(self) -> float:
-        return self._elapsed / self._rate
-
-    @property
-    def hour_label(self) -> str:
-        """Returns '0', '0.5', '1', '1.5' ... '6'."""
-        snapped = round(self.current_hour * 2) / 2
-        return str(int(snapped) if snapped == int(snapped) else snapped)
-
-    @property
-    def is_over(self) -> bool:
-        return self.current_hour >= self._total_hours
-
-    @property
-    def progress(self) -> float:
-        return min(self.current_hour / self._total_hours, 1.0)
-
 
 # ── StatTracker ───────────────────────────────────────────────────────────────
 
@@ -103,13 +60,23 @@ class StatTracker:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _hour(self):
-        snapped = round(self._gh.current_hour * 2) / 2
+        snapped = (self._gh.current_hour * 2) // 1 / 2
         return int(snapped) if snapped == int(snapped) else snapped
 
     def _elapsed(self):
         return round(self._real_elapsed, 1)
 
+    def _append(self, filepath, row):
+        is_new = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
+        with open(filepath, "a", newline="") as f:
+            w = csv.writer(f)
+            if is_new:
+                w.writerow(_HEADERS[filepath])
+            w.writerow(row)
+
     # ── Frame update ──────────────────────────────────────────────────────────
+
+
 
     def update(self, dt, customer_count):
         self._real_elapsed     += dt
@@ -121,20 +88,20 @@ class StatTracker:
     # ── 1. Revenue ────────────────────────────────────────────────────────────
 
     def log_revenue(self, amount: int):
-        _append(REVENUE_CSV, [self._hour(), amount, self._elapsed()])
+        self._append(REVENUE_CSV, [self._hour(), amount, self._elapsed()])
 
     # ── 2. Satisfaction ───────────────────────────────────────────────────────
 
     def log_satisfaction(self, rating: int):
         """Also stores rating in GameData so average_rating stays current."""
-        _append(SATISFACTION_CSV, [self._hour(), rating, self._elapsed()])
+        self._append(SATISFACTION_CSV, [self._hour(), rating, self._elapsed()])
         if self._gamedata:
             self._gamedata.add_rating(rating)
 
     # ── 3. Throughput ─────────────────────────────────────────────────────────
 
     def log_throughput(self, customer_count: int):
-        _append(THROUGHPUT_CSV, [self._hour(), customer_count, self._elapsed()])
+        self._append(THROUGHPUT_CSV, [self._hour(), customer_count, self._elapsed()])
 
     # ── 4. Assembly Accuracy ──────────────────────────────────────────────────
 
@@ -167,7 +134,7 @@ class StatTracker:
                 score += item_weight
 
         pct = round(score / max_score * 100, 1) if max_score > 0 else 0.0
-        _append(ACCURACY_CSV, [self._hour(), score, max_score, pct, self._elapsed()])
+        self._append(ACCURACY_CSV, [self._hour(), score, max_score, pct, self._elapsed()])
         return pct
 
     # ── 5. Ingredients Sold ───────────────────────────────────────────────────
@@ -179,7 +146,7 @@ class StatTracker:
         for item_id, qty in counts.items():
             sell_price = ItemData.get_prop(item_id, "sell_price", 0)
             revenue    = sell_price * qty
-            _append(INGREDIENTS_CSV, [self._hour(), item_id, qty, revenue, self._elapsed()])
+            self._append(INGREDIENTS_CSV, [self._hour(), item_id, qty, revenue, self._elapsed()])
 
     # ── Rating ────────────────────────────────────────────────────────────────
 

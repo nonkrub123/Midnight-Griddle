@@ -21,14 +21,24 @@ class InputHandler:
         self.held_group  = None
         self.is_dragging = False
 
-    def _find_sprite_and_group(self, pos, *groups):
+    def _find_sprite_and_group(self, pos, *groups, for_drop=False):
         for group in reversed(groups):
             sprites_at = [s for s in reversed(group.sprites())
-                          if s.rect.collidepoint(pos)
-                          and s is not self.held_item
-                          and not s.is_locked]
-            if sprites_at:
-                return sprites_at[0], group
+                        if s.rect.collidepoint(pos)
+                        and s is not self.held_item]
+            
+            if for_drop:
+                # Drop mode — accept any sprite with a rect (hitboxes, station blocks, etc.)
+                if sprites_at:
+                    return sprites_at[0], group
+            else:
+                # Click/drag mode — only unlocked, interactable sprites
+                interactable = [s for s in sprites_at
+                                if not s.is_locked
+                                and (s.has_tag("draggable") or s.has_tag("clickable"))]
+                if interactable:
+                    return interactable[0], group
+
         return None, None
 
     def handle_events(self, events, *groups):
@@ -68,12 +78,9 @@ class InputHandler:
                 self.held_group.handle_drag(self.held_item, pos)
 
     def _on_mouse_up(self, pos, *groups):
-        # print(f"This is pos {pos}")
         if not self.held_item:
             return
-        # if not self.held_item or not self.held_group:
-        #     return
-        
+
         held_duration = time.time() - self.mouse_down_time
         dx = pos[0] - self.mouse_down_pos[0]
         dy = pos[1] - self.mouse_down_pos[1]
@@ -85,7 +92,7 @@ class InputHandler:
                 home.handle_snapback(self.held_item)
             self.held_group.handle_click(self.held_item)
         else:
-            target, target_group = self._find_sprite_and_group(pos, *groups)
+            target, target_group = self._find_sprite_and_group(pos, *groups, for_drop=True)  # ← here
             dropped = False
             if target and target is not self.held_item:
                 dropped = target_group.handle_drop(self.held_item, target)

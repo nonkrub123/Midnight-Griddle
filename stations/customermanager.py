@@ -14,23 +14,76 @@ single source of truth instead of keeping parallel copies.
 
 Public API
 ──────────
-    manager = CustomerManager()
-    manager.update(dt)              # spawn tick
-    manager.update_ordering(dt)     # tick ordering-queue patience
-    manager.update_waiting(dt)      # tick waiting-queue patience
+    manager = CustomerManager(game_data)    # pass GameData reference
+    manager.update(dt)                      # spawn tick + difficulty ramp
+    manager.update_ordering(dt)             # tick ordering-queue patience
+    manager.update_waiting(dt)              # tick waiting-queue patience
 
     manager.take_order()            # ordering → waiting, returns Customer
     manager.finish_order()          # remove from waiting, returns Customer
 
     manager.on_ordering             # list of customers currently ordering
     manager.on_waiting              # list of customers currently waiting for food
+
+Difficulty system — two axes
+─────────────────────────────
+  Final difficulty = night_baseline × time_ramp(t)
+
+  1. NIGHT BASELINE  — permanent per-night multiplier read from GameData.night
+     Each successive night starts harder and has a higher personal ceiling:
+
+         night_baseline = 1.0 + (night - 1) * NIGHT_SCALE
+
+     With NIGHT_SCALE = 0.12:
+       Night 1 → baseline = 1.00  (normal)
+       Night 2 → baseline = 1.12  (+12 %)
+       Night 3 → baseline = 1.24
+       Night 5 → baseline = 1.48
+       Night 10 → baseline = 2.08  (already harder before the clock starts)
+
+  2. TIME RAMP  — exponential-saturation curve within each night,
+     scaled so it still reaches DIFFICULTY_CAP regardless of baseline:
+
+         ramp(t) = baseline + (CAP - baseline) * (1 - exp(-k * t))
+
+     This means the ramp always drives toward the same absolute cap,
+     but later nights arrive there faster because baseline is already higher.
+
+  Combined example (CAP = 5.0, k = 0.000060):
+    Night 1, t=0s    → difficulty ≈ 1.00  (opening, calm)
+    Night 1, t=300s  → difficulty ≈ 1.08
+    Night 1, t=600s  → difficulty ≈ 1.16
+    Night 3, t=0s    → difficulty = 1.24  (starts harder)
+    Night 3, t=300s  → difficulty ≈ 1.31
+    Night 5, t=600s  → difficulty ≈ 1.58
+    Night 10, t=600s → difficulty ≈ 2.27
+    Any night, t→∞   → difficulty → 5.00  (absolute ceiling)
+
+  What difficulty actually changes:
+    • Spawn interval:    divided by difficulty  (spawns faster)
+    • Ordering patience: divided by difficulty  (less time to take order)
+    • Waiting patience:  divided by difficulty  (less time to cook)
+    • Max fillings:      scales up with difficulty (more complex orders)
 """
 
 from __future__ import annotations
+import math
 import random
 from collections import deque
 import pygame
 from core.itemdata import ItemData
+
+
+# ── Difficulty constants ───────────────────────────────────────────────────────
+
+DIFFICULTY_CAP  = 5.0        # absolute ceiling across all nights
+DIFFICULTY_K    = 0.000060   # ramp reaches ~80% much later in the shift
+NIGHT_SCALE     = 0.12       # each extra night raises baseline by +12%
+
+# Hard floors — game stays challenging but never literally unplayable
+MIN_PATIENCE_ORDERING = 20.0   # seconds
+MIN_PATIENCE_WAITING  = 30.0   # seconds
+MIN_SPAWN_INTERVAL    = 6.0    # seconds
 
 
 # ── Filling pool ──────────────────────────────────────────────────────────────
@@ -85,38 +138,76 @@ class CustomerManager:
     """
     Parameters
     ----------
-    max_capacity   : max customers in the ordering queue at once
-    min_spawn_time : min seconds between spawns
-    max_spawn_time : max seconds between spawns
-    min_fillings   : min filling items between the buns
-    max_fillings   : max filling items between the buns
+    max_capacity          : max customers in the ordering queue at once
+    min_spawn_time        : min seconds between spawns at difficulty 1
+    max_spawn_time        : max seconds between spawns at difficulty 1
+    min_fillings          : min filling items between the buns (at difficulty 1)
+    max_fillings          : max filling items between the buns (at difficulty 1)
+    min_patience_ordering : floor for ordering patience (seconds)
+    min_patience_waiting  : floor for waiting patience (seconds)
+    night_duration        : total length of the shift in seconds (used for UI/stats only)
     """
 
-    def __init__(self, max_capacity=5, min_spawn_time=10.0, max_spawn_time=20.0,
-                 min_fillings=3, max_fillings=7):
-        self._max_capacity   = max_capacity
-        self._min_spawn_time = min_spawn_time
-        self._max_spawn_time = max_spawn_time
-        self._min_fillings   = min_fillings
-        self._max_fillings   = max_fillings
+    def __init__(self, game_data,
+                 max_capacity=5,
+                 min_spawn_time=MIN_SPAWN_INTERVAL, max_spawn_time=30.0,
+                 min_fillings=2, max_fillings=5,
+                 min_patience_ordering=MIN_PATIENCE_ORDERING,
+                 min_patience_waiting=MIN_PATIENCE_WAITING,
+                 night_duration=360.0):
 
-        self._ordering: deque[Customer] = deque()   # waiting to have order taken
-        self._waiting:  list[Customer]  = []         # order taken, waiting for food
+        self._game_data           = game_data
+        self._max_capacity        = max_capacity
+        self._base_min_spawn      = min_spawn_time
+        self._base_max_spawn      = max_spawn_time
+        self._min_fillings        = min_fillings
+        self._base_max_fill       = max_fillings
+        self._min_patience_ordering = min_patience_ordering
+        self._min_patience_waiting  = min_patience_waiting
+        self.night_duration       = night_duration
 
+        self._ordering: deque[Customer] = deque()
+        self._waiting:  list[Customer]  = []
+
+        # ── Difficulty state ──────────────────────────────────────────────────
+        self._night_elapsed  = 0.0   # seconds since this shift started
+        self._night_baseline = 1.0   # permanent per-night multiplier from GameData
+        self._difficulty     = 1.0   # final combined multiplier
+
+        # Spawn timer — must come after difficulty is initialised (_roll uses it)
         self._timer   = 0.0
         self._next_at = self._roll()
+
         self._avatars = self._make_avatars()
 
     # ── Properties ────────────────────────────────────────────────────────────
 
     @property
+    def difficulty(self) -> float:
+        """Current combined difficulty multiplier (night baseline × time ramp)."""
+        return self._difficulty
+
+    @property
+    def night_baseline(self) -> float:
+        """Permanent per-night starting multiplier (≥ 1.0, grows each night)."""
+        return self._night_baseline
+
+    @property
+    def night_elapsed(self) -> float:
+        """Seconds elapsed since the shift started."""
+        return self._night_elapsed
+
+    @property
+    def night_progress(self) -> float:
+        """0.0 → 1.0 fraction of the night that has passed."""
+        return min(1.0, self._night_elapsed / max(1.0, self.night_duration))
+
+    @property
     def on_ordering(self) -> list[Customer]:
-        """All customers waiting to give their order."""
         return list(self._ordering)
 
     @property
     def on_waiting(self) -> list[Customer]:
-        """All customers waiting for their food."""
         return list(self._waiting)
 
     def is_empty(self) -> bool:
@@ -138,11 +229,6 @@ class CustomerManager:
         return customer
 
     def finish_order(self, customer: Customer | None = None) -> Customer | None:
-        """
-        Remove an order from the waiting queue. Flips phase to "done".
-        Pass a specific Customer to finish them, or leave None for FIFO.
-        Returns the finished Customer, or None if waiting is empty.
-        """
         if not self._waiting:
             return None
         if customer and customer in self._waiting:
@@ -156,7 +242,14 @@ class CustomerManager:
     # ── Update ────────────────────────────────────────────────────────────────
 
     def update(self, dt: float):
-        """Spawn timer only — patience is ticked via the dedicated methods."""
+        """
+        Master update: advance night clock, recompute both difficulty axes, then spawn.
+        Reads game_data.night live every frame so it instantly reflects night changes.
+        """
+        self._night_elapsed  += dt
+        self._night_baseline  = self._compute_night_baseline(self._game_data.night)
+        self._difficulty      = self._compute_difficulty(self._night_elapsed,
+                                                         self._night_baseline)
         self._try_spawn(dt)
 
     def update_ordering(self, dt: float) -> list[Customer]:
@@ -183,6 +276,33 @@ class CustomerManager:
                 expired.append(c)
         return expired
 
+    # ── Difficulty ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _compute_night_baseline(night: int) -> float:
+        """
+        Permanent per-night multiplier. Each extra night adds NIGHT_SCALE.
+            baseline = 1.0 + (night - 1) * NIGHT_SCALE
+        Clamped so it never alone exceeds the cap (the ramp will push to the cap).
+        """
+        raw = 1.0 + (max(1, night) - 1) * NIGHT_SCALE
+        return min(raw, DIFFICULTY_CAP * 0.80)  # baseline never eats >80% of the cap
+
+    @staticmethod
+    def _compute_difficulty(t: float, baseline: float) -> float:
+        """
+        Two-axis difficulty:
+            final = baseline + (CAP - baseline) * (1 - exp(-k * t))
+
+        At t=0 it equals baseline exactly.
+        As t→∞ it approaches DIFFICULTY_CAP asymptotically.
+        Always clamped to [baseline, DIFFICULTY_CAP].
+        """
+        ramp = baseline + (DIFFICULTY_CAP - baseline) * (1.0 - math.exp(-DIFFICULTY_K * t))
+        return min(ramp, DIFFICULTY_CAP)
+
+    # ── Spawn ─────────────────────────────────────────────────────────────────
+
     def _try_spawn(self, dt: float):
         if len(self._ordering) < self._max_capacity:
             self._timer += dt
@@ -191,25 +311,48 @@ class CustomerManager:
                 self._timer   = 0.0
                 self._next_at = self._roll()
 
-    # ── Spawn helpers ─────────────────────────────────────────────────────────
-
     def _spawn(self) -> Customer:
+        d = self._difficulty
+
+        # Patience shrinks as difficulty rises, but never below the instance floors
+        ord_patience  = max(self._min_patience_ordering,
+                            random.uniform(50.0, 70.0) / d)
+        wait_patience = max(self._min_patience_waiting,
+                            random.uniform(80.0, 100.0) / d)
+
         return Customer(
             image             = random.choice(self._avatars).copy(),
             order             = self._build_order(),
-            patience_ordering = random.uniform(50.0, 70.0),
-            patience_waiting  = random.uniform(70.0, 80.0),
+            patience_ordering = ord_patience,
+            patience_waiting  = wait_patience,
         )
 
     def _build_order(self) -> list[str]:
+        """
+        Order complexity scales with difficulty: max fillings grows from
+        _min_fillings up toward _base_max_fill * difficulty (capped at pool size).
+        """
         pool_size = len(FILLING_POOL)
         lo = min(self._min_fillings, pool_size)
-        hi = min(self._max_fillings, pool_size)
+
+        # Difficulty inflates the upper bound, capped at pool size
+        scaled_hi = int(self._base_max_fill * (1.0 + (self._difficulty - 1.0) * 0.4))
+        hi = min(pool_size, max(lo, scaled_hi))
+
         n = random.randint(lo, hi)
-        return ["down_bun"] + random.sample(FILLING_POOL, n) + ["top_bun"]
+        return ["down_bun"] + random.choices(FILLING_POOL, k=n) + ["top_bun"]
 
     def _roll(self) -> float:
-        return random.uniform(self._min_spawn_time, self._max_spawn_time)
+        """
+        Spawn interval divided by difficulty — customers arrive faster
+        as the night wears on, down to a hard floor of _base_min_spawn.
+        """
+        d  = self._difficulty
+        lo = max(self._base_min_spawn, self._base_min_spawn / d)
+        hi = max(self._base_min_spawn + 2.0, self._base_max_spawn / d)
+        return random.uniform(lo, hi)
+
+    # ── Avatars ───────────────────────────────────────────────────────────────
 
     def _make_avatars(self) -> list[pygame.Surface]:
         colours = [(220,120,80),(80,160,220),(100,200,120),(200,180,60),(180,80,180)]

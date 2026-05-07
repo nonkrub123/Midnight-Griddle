@@ -5,7 +5,7 @@ from ui.group import *
 from ui.factory import ItemFactory
 from ui.orderui import OrderUI
 from stations.customermanager import CustomerManager
-from core.stattracker import GameHour, StatTracker
+from core.stattracker import StatTracker
 from core.itemdata import ItemData
 from stations.restock_station import RestockStation
 from stations.station import *
@@ -24,11 +24,11 @@ class StationManager:
         self.gamedata = gamedata
 
         # ── Shared singletons ─────────────────────────────────────────────────
-        self.game_hour        = GameHour(real_seconds_per_hour=120, total_hours=6)
-        self.stat_tracker     = StatTracker(self.game_hour,
-                                            gamedata=gamedata,
-                                            throughput_interval=10)
-        self.customer_manager = CustomerManager(max_capacity=5,
+        self.stat_tracker = StatTracker(gamedata.game_hour,
+                                        gamedata=gamedata,
+                                        throughput_interval=10)
+        self.customer_manager = CustomerManager(game_data= self.gamedata,
+                                                max_capacity=5,
                                                 min_spawn_time=10.0,
                                                 max_spawn_time=20.0)
         self.order_ui = OrderUI(customer_manager=self.customer_manager)
@@ -87,7 +87,7 @@ class StationManager:
         return self.get_active_station().get_all_groups() + [self.__nav_group]
 
     def update(self, dt):
-        self.game_hour.update(dt)
+        self.gamedata.game_hour.update(dt)
 
         # ── Single tick point for the customer model ──────────────────────────
         self.customer_manager.update(dt)                       # spawn
@@ -102,7 +102,7 @@ class StationManager:
         self.stat_tracker.update(dt, customer_count)
 
         # HUD + OrderUI redraw every frame (both are shared across stations)
-        self.hud.refresh(self.game_hour, self.gamedata)
+        self.hud.refresh(self.gamedata.game_hour, self.gamedata)
         self.order_ui.update_ui(dt)
 
         for station in self.stations.values():

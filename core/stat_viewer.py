@@ -125,7 +125,7 @@ def _read(label):
     """Load CSV for this stat and apply the range window."""
     path = CSV_FILES[label]
     src  = GamePath.get_gamedata(path)
-    if not os.path.exists(src):
+    if not os.path.exists(src) or os.path.getsize(src) == 0:
         return None
     df = pd.read_csv(src)
     return _apply_window(df)
@@ -169,7 +169,9 @@ def chart_satisfaction(out):
     _, _, autotexts = ax.pie(
         counts.values,
         labels=[f"{int(r)} ★" for r in counts.index],
-        colors=colors, autopct="%1.1f%%", startangle=140,
+        colors=colors, 
+        autopct="%1.1f%%", 
+        startangle=90,  # Changed from 140 to 90
         wedgeprops=dict(edgecolor=BG, linewidth=2),
     )
     for t in autotexts:

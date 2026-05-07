@@ -5,7 +5,7 @@ from ui.group import *
 from ui.factory import ItemFactory
 from ui.orderui import OrderUI
 from stations.customermanager import CustomerManager
-from core.stattracker import GameHour, StatTracker
+from core.stattracker import StatTracker
 from core.itemdata import ItemData
 import ui.theme as theme
 
@@ -47,7 +47,7 @@ class OrderStation(Station):
         # ACCEPT button — UIButton built from a theme surface, topleft-anchored
         self._group.add(UIButton(
             "btn_accept_order",
-            theme.button_surface("ACCEPT ORDER"),
+            theme.button_surface("ACCEPT ORDER", w=theme.BTN_W, h=theme.BTN_H),
             theme.POS_ORDER_ACCEPT,
             self._accept,
             anchor="topleft",
@@ -232,7 +232,7 @@ class AssembleStation(Station):
         # ── Plate ─────────────────────────────────────────────────────────────
         self.plate = PlateGroup(
             "plate", theme.POS_PLATE, max_capacity=10,
-            base_plate=factory.create("redplate", pos=theme.POS_PLATE),
+            base_plate=factory.create("redplate", pos=theme.POS_PLATE), hitbox_size=(150,1200)
         )
 
         # ── Ingredient dispensers ─────────────────────────────────────────────
@@ -261,8 +261,8 @@ class AssembleStation(Station):
         self._btn_group = BaseGroup()
         self._btn_group.add(UIButton(
             "btn_submit_order",
-            theme.button_surface("SUBMIT ORDER",
-                                 w=240, h=70, color=theme.C_BTN_SUBMIT),
+            theme.button_surface("SUBMIT ORDER", 
+                                 w=theme.BTN_W, h=theme.BTN_H, color=theme.C_BTN_SUBMIT),
             theme.POS_SUBMIT_BTN,
             self._submit,
             anchor="topleft",
@@ -311,10 +311,10 @@ class AssembleStation(Station):
         rating         = StatTracker.compute_rating(ordering_ratio, accuracy_pct, waiting_ratio)
         revenue        = sum(ItemData.get_prop(i, "sell_price", 0) for i in plate_names)
 
-        self._stat_tracker.log_revenue(revenue)
         self._stat_tracker.log_satisfaction(rating)
         self._stat_tracker.log_ingredients(plate_names)
         self._gamedata.add_money(revenue)
+        self._stat_tracker.log_revenue(self._gamedata.money)
         self._gamedata.save()
 
         stars = "*" * rating + "-" * (5 - rating)

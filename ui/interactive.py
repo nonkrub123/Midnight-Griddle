@@ -17,7 +17,9 @@ class InteractiveObject(pygame.sprite.Sprite):
         self.is_locked     = False
 
         # Draw layer — used by InputHandler to lift sprite while dragging
+        self.__default_layer = LAYER_FOOD
         self._layer = LAYER_FOOD
+        self._cook_state = "default"
 
         # Smooth movement
         self.__target_pos    = None
@@ -42,7 +44,8 @@ class InteractiveObject(pygame.sprite.Sprite):
         t = self.move_timer / self.move_duration if self.move_duration > 0 else 1.0
         if t >= 1.0:
             self.rect.center = (int(self.__target_pos.x), int(self.__target_pos.y))
-            self.__target_pos  = None
+            self.__target_pos = None
+            self._layer = self.__default_layer  # ← restore layer when animation ends
         else:
             new_pos = self.__start_pos.lerp(self.__target_pos, t)
             self.rect.center = (int(new_pos.x), int(new_pos.y))
