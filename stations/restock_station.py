@@ -6,7 +6,7 @@ Clicking BUY buys one unit via GameData.restock().
 """
 
 import pygame
-from ui.group import BaseGroup
+from ui.group import UIGroup
 from ui.interactive import StaticUI, UIButton
 from core.itemdata import ItemData
 from stations.station import Station
@@ -68,7 +68,7 @@ class RestockStation(Station):
         super().__init__(screen, bg_image_path)
 
         self._gamedata = gamedata
-        self._group    = BaseGroup()
+        self._group    = UIGroup()
         self._rows     = {}
         self._last_stock = {}
 
@@ -106,6 +106,7 @@ class RestockStation(Station):
         self.register_group(self._group)
 
     def update(self, dt=0):
+        self._group.update(dt)
         for item_id, row in self._rows.items():
             current = self._gamedata.get_stock(item_id)
             if current != self._last_stock.get(item_id, -1):

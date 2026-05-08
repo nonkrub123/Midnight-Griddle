@@ -1,11 +1,10 @@
 from core.settings import *
 from stations.station import *
 from ui.interactive import *
-import time
 import pygame
 from stations.stationmanager import *
-from core.stat_viewer import show_stat
-from core.inputhandler import InputHandler
+# from core.stat_viewer import show_stat
+# from core.inputhandler import InputHandler
 from ui.group import BaseGroup
 import ui.theme as theme
 

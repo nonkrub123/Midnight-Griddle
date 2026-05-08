@@ -4,7 +4,7 @@ from core.settings import GamePath
 class ItemData:
     """Centralized static database. No instance needed."""
     
-    DATABASE = {
+    __DATABASE = {
         # ── Grillables ────────────────────────────────────────────────────────────
         "meat": {
             "type":           "grillable",
@@ -69,7 +69,7 @@ class ItemData:
             "undeletable":    False,
             "display_name":   "Cheddar Slice",
             "weight":         1,
-            "pixel_height":   10,
+            "pixel_height":   25,
             "layer_priority": 3,
             "buy_price":      1,
             "sell_price":     5,
@@ -84,7 +84,7 @@ class ItemData:
             "undeletable":    False,
             "display_name":   "Fresh Lettuce",
             "weight":         1,
-            "pixel_height":   14,
+            "pixel_height":   25,
             "layer_priority": 4,
             "buy_price":      1,
             "sell_price":     4,
@@ -99,7 +99,7 @@ class ItemData:
             "undeletable":    False,
             "display_name":   "Tomato Slice",
             "weight":         1,
-            "pixel_height":   15,
+            "pixel_height":   25,
             "layer_priority": 5,
             "buy_price":      2,
             "sell_price":     6,
@@ -198,7 +198,7 @@ class ItemData:
 
     @staticmethod
     def get_item(item_name):
-        return ItemData.DATABASE.get(item_name)
+        return ItemData.__DATABASE.get(item_name)
 
     @staticmethod
     def get_prop(item_name, prop_name, default_value=False):
@@ -252,12 +252,12 @@ class ItemData:
 
     @staticmethod
     def get_ingredients() -> list:
-        return [k for k, v in ItemData.DATABASE.items() if v["type"] == "ingredient"]
+        return [k for k, v in ItemData.__DATABASE.items() if v["type"] == "ingredient"]
 
     @staticmethod
     def get_grillables() -> list:
-        return [k for k, v in ItemData.DATABASE.items() if v["type"] == "grillable"]
+        return [k for k, v in ItemData.__DATABASE.items() if v["type"] == "grillable"]
 
     @staticmethod
     def get_all_edible() -> list:
-        return [k for k, v in ItemData.DATABASE.items() if v.get("ingredient")]
+        return [k for k, v in ItemData.__DATABASE.items() if v.get("ingredient")]

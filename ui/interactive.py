@@ -14,34 +14,51 @@ class InteractiveObject(pygame.sprite.Sprite):
 
         # Which group "owns" this sprite — set by handle_drag / handle_drop
         self.current_group = None
-        self.is_locked     = False
+        self.__is_locked     = False
 
         # Draw layer — used by InputHandler to lift sprite while dragging
         self.__default_layer = LAYER_FOOD
         self._layer = LAYER_FOOD
-        self._cook_state = "default"
+        self.__cook_state = "default"
 
         # Smooth movement
         self.__target_pos    = None
         self.__start_pos     = pygame.Vector2(pos)
-        self.move_timer    = 0
-        self.move_duration = 0
+        self.__move_timer    = 0
+        self.__move_duration = 0
+
+    # ── Property  ──────────────────────────────────────────────────────────────
+    @property
+    def is_locked(self):
+        return self.__is_locked
+    
+    @is_locked.setter
+    def is_locked(self, boolean):
+        if boolean == True or boolean == False:
+            self.__is_locked = boolean
+        else:
+            return
+    
+    @property
+    def _cook_state(self):
+        return self.__cook_state
+
 
     # ── Movement ──────────────────────────────────────────────────────────────
 
     def set_target(self, pos, duration=0.2):
         self.__target_pos    = pygame.Vector2(pos)
         self.__start_pos     = pygame.Vector2(self.rect.center)
-        self.move_timer    = 0
-        self.move_duration = duration
+        self.__move_timer    = 0
+        self.__move_duration = duration
 
     def update(self, dt=0):
         if self.__target_pos:
             self._move(dt)
 
     def _move(self, dt):
-        self.move_timer += dt
-        t = self.move_timer / self.move_duration if self.move_duration > 0 else 1.0
+        self.__move_timer += dt
+        t = self.__move_timer / self.__move_duration if self.__move_duration > 0 else 1.0
         if t >= 1.0:
             self.rect.center = (int(self.__target_pos.x), int(self.__target_pos.y))
             self.__target_pos = None
@@ -58,7 +75,7 @@ class InteractiveObject(pygame.sprite.Sprite):
         Everything else is looked up in ItemData.
         """
         if tag == "locked":
-            return self.is_locked
+            return self.__is_locked
         return ItemData.get_prop(self.name, tag, False)
 
     # ── Clone ─────────────────────────────────────────────────────────────────
@@ -69,8 +86,8 @@ class InteractiveObject(pygame.sprite.Sprite):
         new.rect          = self.image.get_rect(center=pos)
         new.__start_pos     = pygame.Vector2(pos)
         new.__target_pos    = None
-        new.move_timer    = 0
-        new.is_locked     = False
+        new.__move_timer    = 0
+        new.__is_locked     = False
         new.current_group = None
         # Re-init the sprite so it has no group memberships
         pygame.sprite.Sprite.__init__(new)
@@ -82,7 +99,7 @@ class InteractiveObject(pygame.sprite.Sprite):
     # ── Input callbacks ───────────────────────────────────────────────────────
 
     def on_click(self):       pass
-    def on_drag(self, pos):   self.rect.center = pos
+    def on_drag(self, pos):   pass
     def on_place(self):       pass
     def on_snapback(self):    pass
 
@@ -142,7 +159,18 @@ class StaticUI(pygame.sprite.Sprite):
         self._anchor   = anchor
         self.rect      = self.image.get_rect(**{anchor: pos})
         self._layer    = layer
-        self.is_locked = True
+        self.__is_locked = True
+
+    @property
+    def is_locked(self):
+        return self.__is_locked
+    
+    @is_locked.setter
+    def is_locked(self, boolean):
+        if boolean == True or boolean == False:
+            self.__is_locked = boolean
+        else:
+            return
 
     def set_surface(self, image, pos=None, anchor=None):
         """Swap image and re-anchor. Keeps the original pos/anchor if not given."""
@@ -164,7 +192,7 @@ class StaticUI(pygame.sprite.Sprite):
 
 class UIButton(InteractiveObject):
     """
-    Clickable, non-draggable UI element. Flexible image input:
+    Clickable, non-draggable UI element with hover-glow. Flexible image input:
 
         UIButton("nav_order", "assets/ui/20.png",        (10, 600), cb)   # path
         UIButton("accept",    theme.button_surface(...), (860, 700), cb,
@@ -178,94 +206,131 @@ class UIButton(InteractiveObject):
     layer  : draw layer (default LAYER_UI)
     """
 
+    HOVER_BRIGHTEN = 60  # 0..255 — added to each RGB channel on hover
+ 
     def __init__(self, name, image, pos, callback,
                  anchor: str = "center",
                  layer:  int = LAYER_UI):
         surf = _resolve_image(image)
         super().__init__(name, pos, {"default": surf})
-
-        # InteractiveObject forces a center rect; override if caller wanted else.
+ 
         if anchor != "center":
             self.rect = surf.get_rect(**{anchor: pos})
-
+ 
         self._layer   = layer
-        self.callback = callback
+        self.__callback = callback
+ 
+        # ── Hover effect ────────────────────────────────────────────────
+        self.__is_hovered    = False
+        self.__normal_image = surf
+        self.__hover_image  = self.__make_hover_image(surf)
 
+    @property
+    def is_hovered(self):
+        return self.__is_hovered
+
+    @is_hovered.setter
+    def is_hovered(self, value: bool):
+        if value == self.__is_hovered:
+            return  # no change, don't touch image
+        self.__is_hovered = value
+
+    def set_hovered(self, value: bool):
+        """Called by InputHandler. Swaps image only when state actually changes."""
+        if value == self.__is_hovered:
+            return
+        self.__is_hovered = value
+        if value and not self.is_locked:
+            self.image = self.__hover_image
+        else:
+            self.image = self.__normal_image
+            
+    @staticmethod
+    def __make_hover_image(base):
+        """Pre-render a brightened copy. Done once, reused every frame."""
+        hover = base.copy()
+        glow  = pygame.Surface(base.get_size())
+        glow.fill((UIButton.HOVER_BRIGHTEN,
+                   UIButton.HOVER_BRIGHTEN,
+                   UIButton.HOVER_BRIGHTEN))
+        hover.blit(glow, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        return hover
+ 
     def has_tag(self, tag):
-        # UIButton is not in ItemData — answer directly without a DB lookup
         if tag == "clickable":  return True
         if tag == "draggable":  return False
         if tag == "locked":     return self.is_locked
+        if tag == "hoverable": return True
         return False
-
+ 
     def on_click(self):
-        if self.callback:
-            self.callback()
+        if self.__callback:
+            self.__callback()
 
 
 # ── Grillable Item ────────────────────────────────────────────────────────────
 
 class GrillableItem(InteractiveObject):
-    STATES           = ("precook", "raw", "cooked", "burnt")
-    COOKED_THRESHOLD = 0.50
-    BURNT_THRESHOLD  = 1.50
+    __STATES           = ("precook", "raw", "cooked", "burnt")
+    __COOKED_THRESHOLD = 0.50
+    __BURNT_THRESHOLD  = 1.50
 
     def __init__(self, name, pos, images: dict):
-        self.max_cook_time  = ItemData.get_prop(name, "max_cook_time", 10.0)
-        self._cook_state    = "precook"
-        self._time_on_grill = 0.0
-        self.state_images   = images
+        self.__max_cook_time  = ItemData.get_prop(name, "max_cook_time", 10.0)
+        self.__cook_state    = "precook"
+        self.__time_on_grill = 0.0
+        self.__state_images   = images
         super().__init__(name, pos, images)
         self.image = images["precook"] if isinstance(images, dict) else images
-        self._last_tint_step = -1
-        self._tinted_image   = None
+        self.__last_tint_step = -1
+        self.__tinted_image   = None
 
     @property
     def cook_state(self):
-        return self._cook_state
+        return self.__cook_state
 
     @cook_state.setter
     def cook_state(self, value):
-        assert value in self.STATES, f"Invalid cook state: {value}"
-        if value != self._cook_state:
-            self._cook_state = value
-            self.image = self.state_images[value]
+        assert value in self.__STATES, f"Invalid cook state: {value}"
+        if value != self.__cook_state:
+            self.__cook_state = value
+            self.image = self.__state_images[value]
 
     def on_cook(self, dt):
-        if self._cook_state == "burnt":
+        if self.__cook_state == "burnt":
             return
-        self._time_on_grill += dt
-        new_state = self._evaluate_cook_state()
+        self.__time_on_grill += dt
+        new_state = self.__evaluate_cook_state()
         self.cook_state = new_state
         # Only tint once cooking has actually started
-        if self._cook_state != "precook":
-            self.image = self._get_tinted_image()
+        if self.__cook_state != "precook":
+            self.image = self.__get_tinted_image()
 
-    def _evaluate_cook_state(self):
-        ratio = self._time_on_grill / self.max_cook_time
-        if   ratio >= self.BURNT_THRESHOLD:  return "burnt"
-        elif ratio >= self.COOKED_THRESHOLD: return "cooked"
+    def __evaluate_cook_state(self):
+        ratio = self.__time_on_grill / self.__max_cook_time
+        if   ratio >= self.__BURNT_THRESHOLD:  return "burnt"
+        elif ratio >= self.__COOKED_THRESHOLD: return "cooked"
         else:                                return "raw"
 
-    def cook_progress(self):
-        return min(self._time_on_grill / (self.max_cook_time * self.BURNT_THRESHOLD), 1.0)
+    def __cook_progress(self):
+        return min(self.__time_on_grill / (self.__max_cook_time * self.__BURNT_THRESHOLD), 1.0)
 
-    def _get_tinted_image(self):
-        progress = self.cook_progress()
+    def __get_tinted_image(self):
+        progress = self.__cook_progress()
         step     = int(progress * 10) / 10
-        if step == self._last_tint_step:
-            return self._tinted_image
+        if step == self.__last_tint_step:
+            return self.__tinted_image
 
-        self._last_tint_step = step
-        state_key = self._cook_state if self._cook_state in ("raw","cooked","burnt") else "raw"
-        base      = self.state_images[state_key].copy()
+        self.__last_tint_step = step
+        state_key = self.__cook_state if self.__cook_state in ("raw","cooked","burnt") else "raw"
+        base      = self.__state_images[state_key].copy()
         # 255 = no change, 0 = black. Multiply RGB channels only, alpha untouched
         brightness = int((1.0 - step * 0.7) * 255)  # darkens to 30% at max
         dark_surf  = pygame.Surface(base.get_size(), pygame.SRCALPHA)
         dark_surf.fill((brightness, brightness, brightness, 255))
         base.blit(dark_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
-        self._tinted_image = base
+        self.__tinted_image = base
         return base
 
 

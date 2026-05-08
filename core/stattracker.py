@@ -55,7 +55,6 @@ class StatTracker:
         self._gamedata            = gamedata
         self._throughput_interval = throughput_interval
         self._throughput_timer    = 0.0
-        self._real_elapsed        = 0.0
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -64,7 +63,7 @@ class StatTracker:
         return int(snapped) if snapped == int(snapped) else snapped
 
     def _elapsed(self):
-        return round(self._real_elapsed, 1)
+        return round(self._gh.elapsed, 1)
 
     def _append(self, filepath, row):
         is_new = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
@@ -79,7 +78,6 @@ class StatTracker:
 
 
     def update(self, dt, customer_count):
-        self._real_elapsed     += dt
         self._throughput_timer += dt
         if self._throughput_timer >= self._throughput_interval:
             self._throughput_timer -= self._throughput_interval

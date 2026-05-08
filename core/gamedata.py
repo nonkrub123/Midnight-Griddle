@@ -26,20 +26,24 @@ class GameHour:
     total_hours           : shift length in game hours     (default 6)
     """
     def __init__(self, real_seconds_per_hour=120.0, total_hours=6.0):
-        self._rate        = real_seconds_per_hour
-        self._total_hours = total_hours
-        self._elapsed     = 0.0
+        self.__rate        = real_seconds_per_hour
+        self.__total_hours = total_hours
+        self.__elapsed     = 0.0
 
     def update(self, dt):
         if not self.is_over:
-            self._elapsed += dt
+            self.__elapsed += dt
 
     def restart(self):
-        self._elapsed = 0
+        self.__elapsed = 0
 
     @property
+    def elapsed(self):
+        return self.__elapsed
+    
+    @property
     def current_hour(self) -> float:
-        return self._elapsed / self._rate
+        return self.__elapsed / self.__rate
 
     @property
     def hour_label(self) -> str:
@@ -49,11 +53,11 @@ class GameHour:
 
     @property
     def is_over(self) -> bool:
-        return self.current_hour >= self._total_hours
+        return self.current_hour >= self.__total_hours
 
     @property
     def progress(self) -> float:
-        return min(self.current_hour / self._total_hours, 1.0)
+        return min(self.current_hour / self.__total_hours, 1.0)
 
 # ── GameData ──────────────────────────────────────────────────────────────────
 

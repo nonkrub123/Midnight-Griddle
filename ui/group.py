@@ -39,7 +39,9 @@ class BaseGroup(pygame.sprite.LayeredUpdates):
     def _on_snapback(self, sprite):
         sprite.on_snapback()
 
-
+class UIGroup(BaseGroup):
+    def __init__(self):
+        super().__init__()
 # ─────────────────────────────────────────────────────────────────────────────
 # StackGroup
 # ─────────────────────────────────────────────────────────────────────────────
@@ -229,59 +231,59 @@ class DispenserGroup(StackGroup):
     def __init__(self, name, pos, template_item, gamedata: GameData,
                  base_plate=None, plate_size=(64, 64)):
         super().__init__(name, pos, max_capacity=0, base_plate=base_plate, plate_size=plate_size)
-        self._factory  = ItemFactory()
-        self._gamedata = gamedata
-        self._item_id  = template_item.name
+        self.__factory  = ItemFactory()
+        self.__gamedata = gamedata
+        self.__item_id  = template_item.name
 
-        self._template             = template_item
-        self._template.is_locked   = False
-        self._template.rect.center = self.station_block.rect.center
-        self.add(self._template)
+        self.__template             = template_item
+        self.__template.is_locked   = False
+        self.__template.rect.center = self.station_block.rect.center
+        self.add(self.__template)
 
         label_pos = (self.station_block.rect.centerx,
                      self.station_block.rect.top - 16)
-        self._stock_label = _StockLabel(label_pos)
-        self.add(self._stock_label)
-        self._update_label()
+        self.__stock_label = _StockLabel(label_pos)
+        self.add(self.__stock_label)
+        self.__update_label()
 
-    def _update_label(self):
-        stock = self._gamedata.get_stock(self._item_id)
-        self._stock_label.set_stock(stock)
-        self._template.is_locked = stock <= 0
+    def __update_label(self):
+        stock = self.__gamedata.get_stock(self.__item_id)
+        self.__stock_label.set_stock(stock)
+        self.__template.is_locked = stock <= 0
 
     def handle_drag(self, sprite, pos):
-        if sprite is not self._template:
+        if sprite is not self.__template:
             return
-        if not self._gamedata.has_stock(self._item_id):
+        if not self.__gamedata.has_stock(self.__item_id):
             return
-        self._gamedata.use_stock(self._item_id)
+        self.__gamedata.use_stock(self.__item_id)
 
         # Spawn replacement BEFORE super() kills the old template
-        new_template = self._factory.create(self._item_id, self.station_block.rect.center)
-        self._template = new_template
-        self.add(self._template)
-        self._update_label()
+        new_template = self.__factory.create(self.__item_id, self.station_block.rect.center)
+        self.__template = new_template
+        self.add(self.__template)
+        self.__update_label()
 
         super().handle_drag(sprite, pos)  # now kills the dragged copy
 
     def handle_snapback(self, sprite):
         sprite.kill()
-        self._gamedata.add_stock(self._item_id, 1)
-        self._template.set_target(self.station_block.rect.center)
-        self._update_label()
+        self.__gamedata.add_stock(self.__item_id, 1)
+        self.__template.set_target(self.station_block.rect.center)
+        self.__update_label()
 
     def handle_drop(self, sprite, target):
-        if sprite.name == self._template.name:
-            if sprite._cook_state == self._template._cook_state:
+        if sprite.name == self.__template.name:
+            if sprite._cook_state == self.__template._cook_state:
                 sprite.kill()
-                self._gamedata.add_stock(self._template.name, 1)
+                self.__gamedata.add_stock(self.__template.name, 1)
                 return True
         
         return False
 
     def update(self, dt=0):
         super().update(dt)
-        self._update_label()
+        self.__update_label()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,29 +296,3 @@ class TrashGroup(StackGroup):
             return True
         return False
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# StationGroup
-# ─────────────────────────────────────────────────────────────────────────────
-# class StationGroup(BaseGroup):
-#     def __init__(self, name, image_path, pos):
-#         super().__init__()
-#         surf = _load_surface(image_path)
-#         self.station_block = InteractiveObject(name, pos, {"default": surf})
-#         self.station_block._layer    = LAYER_STATION
-#         self.station_block.is_locked = True
-#         self.add(self.station_block, layer=LAYER_STATION)
-#         self.stack_offset = 5
-
-#     def placed_items(self):
-#         return [s for s in self.sprites() if s is not self.station_block]
-
-#     def place(self, item):
-#         idx = len(self.placed_items())
-#         item.rect.centerx = self.station_block.rect.centerx
-#         item.rect.centery = self.station_block.rect.centery - (idx * self.stack_offset)
-#         self.add(item)
-
-#     def clear_station(self):
-#         for item in self.placed_items():
-#             item.kill()

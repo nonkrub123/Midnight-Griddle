@@ -86,14 +86,13 @@ MIN_PATIENCE_WAITING  = 30.0   # seconds
 MIN_SPAWN_INTERVAL    = 6.0    # seconds
 
 
-# ── Filling pool ──────────────────────────────────────────────────────────────
+# ── Private filling pool ──────────────────────────────────────────────────────
 
 def _build_filling_pool() -> list[str]:
     skip = {"down_bun", "top_bun"}
-    return [k for k in ItemData.get_all_edible()
-            if k not in skip]
+    return [k for k in ItemData.get_all_edible() if k not in skip]
 
-FILLING_POOL = _build_filling_pool()
+_FILLING_POOL = _build_filling_pool()
 
 
 # ── Customer ──────────────────────────────────────────────────────────────────
@@ -109,20 +108,16 @@ class Customer:
         self.image             = image
         self.order             = order          # ["down_bun", ..., "top_bun"]
 
-        # Current patience (ticked by CustomerManager)
         self.patience_ordering = patience_ordering
         self.patience_waiting  = patience_waiting
 
-        # Baselines so downstream code can compute ratios (0..1)
         self.start_patience_ordering = patience_ordering
         self.start_patience_waiting  = patience_waiting
 
-        # Single source of truth for phase: "ordering" | "waiting" | "done"
         self.phase   = "ordering"
         self.is_late = False
         self.ordering_ratio_at_accept: float | None = None
 
-    # Convenience read-throughs for rating / UI code
     @property
     def ordering_ratio(self) -> float:
         return self.patience_ordering / max(1, self.start_patience_ordering)
@@ -156,203 +151,170 @@ class CustomerManager:
                  min_patience_waiting=MIN_PATIENCE_WAITING,
                  night_duration=360.0):
 
-        self._game_data           = game_data
-        self._max_capacity        = max_capacity
-        self._base_min_spawn      = min_spawn_time
-        self._base_max_spawn      = max_spawn_time
-        self._min_fillings        = min_fillings
-        self._base_max_fill       = max_fillings
-        self._min_patience_ordering = min_patience_ordering
-        self._min_patience_waiting  = min_patience_waiting
-        self.night_duration       = night_duration
+        self.__game_data             = game_data
+        self.__max_capacity          = max_capacity
+        self.__base_min_spawn        = min_spawn_time
+        self.__base_max_spawn        = max_spawn_time
+        self.__min_fillings          = min_fillings
+        self.__base_max_fill         = max_fillings
+        self.__min_patience_ordering = min_patience_ordering
+        self.__min_patience_waiting  = min_patience_waiting
+        self.night_duration          = night_duration   # read by UI/stats
 
-        self._ordering: deque[Customer] = deque()
-        self._waiting:  list[Customer]  = []
+        self.__ordering: deque[Customer] = deque()
+        self.__waiting:  list[Customer]  = []
 
-        # ── Difficulty state ──────────────────────────────────────────────────
-        self._night_elapsed  = 0.0   # seconds since this shift started
-        self._night_baseline = 1.0   # permanent per-night multiplier from GameData
-        self._difficulty     = 1.0   # final combined multiplier
+        self.__night_elapsed  = 0.0
+        self.__night_baseline = 1.0
+        self.__difficulty     = 1.0
 
-        # Spawn timer — must come after difficulty is initialised (_roll uses it)
-        self._timer   = 0.0
-        self._next_at = self._roll()
+        self.__timer   = 0.0
+        self.__next_at = self._roll()
 
-        self._avatars = self._make_avatars()
+        self.__avatars = self._make_avatars()
 
-    # ── Properties ────────────────────────────────────────────────────────────
+    # ── Public properties ─────────────────────────────────────────────────────
 
     @property
     def difficulty(self) -> float:
         """Current combined difficulty multiplier (night baseline × time ramp)."""
-        return self._difficulty
+        return self.__difficulty
 
     @property
     def night_baseline(self) -> float:
         """Permanent per-night starting multiplier (≥ 1.0, grows each night)."""
-        return self._night_baseline
+        return self.__night_baseline
 
     @property
     def night_elapsed(self) -> float:
         """Seconds elapsed since the shift started."""
-        return self._night_elapsed
+        return self.__night_elapsed
 
     @property
     def night_progress(self) -> float:
         """0.0 → 1.0 fraction of the night that has passed."""
-        return min(1.0, self._night_elapsed / max(1.0, self.night_duration))
+        return min(1.0, self.__night_elapsed / max(1.0, self.night_duration))
 
     @property
     def on_ordering(self) -> list[Customer]:
-        return list(self._ordering)
+        return list(self.__ordering)
 
     @property
     def on_waiting(self) -> list[Customer]:
-        return list(self._waiting)
+        return list(self.__waiting)
+
+    # ── Public methods ────────────────────────────────────────────────────────
 
     def is_empty(self) -> bool:
-        return len(self._ordering) == 0
+        return len(self.__ordering) == 0
 
     def get_customer(self) -> "Customer | None":
         """Alias for take_order() — kept for compatibility."""
         return self.take_order()
 
-    # ── Main actions ──────────────────────────────────────────────────────────
-
     def take_order(self) -> Customer | None:
-        if not self._ordering:
+        if not self.__ordering:
             return None
-        customer       = self._ordering.popleft()
+        customer       = self.__ordering.popleft()
         customer.phase = "waiting"
         customer.ordering_ratio_at_accept = customer.ordering_ratio
-        self._waiting.append(customer)
+        self.__waiting.append(customer)
         return customer
 
     def finish_order(self, customer: Customer | None = None) -> Customer | None:
-        if not self._waiting:
+        if not self.__waiting:
             return None
-        if customer and customer in self._waiting:
-            self._waiting.remove(customer)
+        if customer and customer in self.__waiting:
+            self.__waiting.remove(customer)
             customer.phase = "done"
             return customer
-        c = self._waiting.pop(0)
+        c = self.__waiting.pop(0)
         c.phase = "done"
         return c
-
-    # ── Update ────────────────────────────────────────────────────────────────
 
     def update(self, dt: float):
         """
         Master update: advance night clock, recompute both difficulty axes, then spawn.
         Reads game_data.night live every frame so it instantly reflects night changes.
         """
-        self._night_elapsed  += dt
-        self._night_baseline  = self._compute_night_baseline(self._game_data.night)
-        self._difficulty      = self._compute_difficulty(self._night_elapsed,
-                                                         self._night_baseline)
+        self.__night_elapsed  += dt
+        self.__night_baseline  = self._compute_night_baseline(self.__game_data.night)
+        self.__difficulty      = self._compute_difficulty(self.__night_elapsed,
+                                                          self.__night_baseline)
         self._try_spawn(dt)
 
     def update_ordering(self, dt: float) -> list[Customer]:
         """Tick ordering-queue patience. Returns customers who expired this frame."""
         expired: list[Customer] = []
-        for c in list(self._ordering):
+        for c in list(self.__ordering):
             c.patience_ordering = max(0.0, c.patience_ordering - dt)
             if c.patience_ordering <= 0:
                 c.phase   = "abandoned"
                 c.is_late = True
-                self._ordering.remove(c)
+                self.__ordering.remove(c)
                 expired.append(c)
         return expired
 
     def update_waiting(self, dt: float) -> list[Customer]:
         """Tick waiting-queue patience. Returns customers who expired this frame."""
         expired: list[Customer] = []
-        for c in list(self._waiting):
+        for c in list(self.__waiting):
             c.patience_waiting = max(0.0, c.patience_waiting - dt)
             if c.patience_waiting <= 0:
                 c.phase   = "abandoned"
                 c.is_late = True
-                self._waiting.remove(c)
+                self.__waiting.remove(c)
                 expired.append(c)
         return expired
 
-    # ── Difficulty ────────────────────────────────────────────────────────────
+    # ── Private — difficulty ──────────────────────────────────────────────────
 
     @staticmethod
     def _compute_night_baseline(night: int) -> float:
-        """
-        Permanent per-night multiplier. Each extra night adds NIGHT_SCALE.
-            baseline = 1.0 + (night - 1) * NIGHT_SCALE
-        Clamped so it never alone exceeds the cap (the ramp will push to the cap).
-        """
         raw = 1.0 + (max(1, night) - 1) * NIGHT_SCALE
-        return min(raw, DIFFICULTY_CAP * 0.80)  # baseline never eats >80% of the cap
+        return min(raw, DIFFICULTY_CAP * 0.80)
 
     @staticmethod
     def _compute_difficulty(t: float, baseline: float) -> float:
-        """
-        Two-axis difficulty:
-            final = baseline + (CAP - baseline) * (1 - exp(-k * t))
-
-        At t=0 it equals baseline exactly.
-        As t→∞ it approaches DIFFICULTY_CAP asymptotically.
-        Always clamped to [baseline, DIFFICULTY_CAP].
-        """
         ramp = baseline + (DIFFICULTY_CAP - baseline) * (1.0 - math.exp(-DIFFICULTY_K * t))
         return min(ramp, DIFFICULTY_CAP)
 
-    # ── Spawn ─────────────────────────────────────────────────────────────────
+    # ── Private — spawn ───────────────────────────────────────────────────────
 
     def _try_spawn(self, dt: float):
-        if len(self._ordering) < self._max_capacity:
-            self._timer += dt
-            if self._timer >= self._next_at:
-                self._ordering.append(self._spawn())
-                self._timer   = 0.0
-                self._next_at = self._roll()
+        if len(self.__ordering) < self.__max_capacity:
+            self.__timer += dt
+            if self.__timer >= self.__next_at:
+                self.__ordering.append(self._spawn())
+                self.__timer   = 0.0
+                self.__next_at = self._roll()
 
     def _spawn(self) -> Customer:
-        d = self._difficulty
-
-        # Patience shrinks as difficulty rises, but never below the instance floors
-        ord_patience  = max(self._min_patience_ordering,
+        d = self.__difficulty
+        ord_patience  = max(self.__min_patience_ordering,
                             random.uniform(50.0, 70.0) / d)
-        wait_patience = max(self._min_patience_waiting,
+        wait_patience = max(self.__min_patience_waiting,
                             random.uniform(80.0, 100.0) / d)
-
         return Customer(
-            image             = random.choice(self._avatars).copy(),
+            image             = random.choice(self.__avatars).copy(),
             order             = self._build_order(),
             patience_ordering = ord_patience,
             patience_waiting  = wait_patience,
         )
 
     def _build_order(self) -> list[str]:
-        """
-        Order complexity scales with difficulty: max fillings grows from
-        _min_fillings up toward _base_max_fill * difficulty (capped at pool size).
-        """
-        pool_size = len(FILLING_POOL)
-        lo = min(self._min_fillings, pool_size)
-
-        # Difficulty inflates the upper bound, capped at pool size
-        scaled_hi = int(self._base_max_fill * (1.0 + (self._difficulty - 1.0) * 0.4))
+        pool_size = len(_FILLING_POOL)
+        lo = min(self.__min_fillings, pool_size)
+        scaled_hi = int(self.__base_max_fill * (1.0 + (self.__difficulty - 1.0) * 0.4))
         hi = min(pool_size, max(lo, scaled_hi))
-
-        n = random.randint(lo, hi)
-        return ["down_bun"] + random.choices(FILLING_POOL, k=n) + ["top_bun"]
+        n  = random.randint(lo, hi)
+        return ["down_bun"] + random.choices(_FILLING_POOL, k=n) + ["top_bun"]
 
     def _roll(self) -> float:
-        """
-        Spawn interval divided by difficulty — customers arrive faster
-        as the night wears on, down to a hard floor of _base_min_spawn.
-        """
-        d  = self._difficulty
-        lo = max(self._base_min_spawn, self._base_min_spawn / d)
-        hi = max(self._base_min_spawn + 2.0, self._base_max_spawn / d)
+        d  = self.__difficulty
+        lo = max(self.__base_min_spawn, self.__base_min_spawn / d)
+        hi = max(self.__base_min_spawn + 2.0, self.__base_max_spawn / d)
         return random.uniform(lo, hi)
-
-    # ── Avatars ───────────────────────────────────────────────────────────────
 
     def _make_avatars(self) -> list[pygame.Surface]:
         colours = [(220,120,80),(80,160,220),(100,200,120),(200,180,60),(180,80,180)]

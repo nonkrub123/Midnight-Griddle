@@ -3,13 +3,13 @@ from core.gamedata import GameData
 from ui.interactive import *
 from ui.group import *
 from ui.factory import ItemFactory
-from ui.orderui import OrderUI
+from ui.group_orderui import OrderUI
 from stations.customermanager import CustomerManager
 from core.stattracker import StatTracker
 from core.itemdata import ItemData
 from stations.restock_station import RestockStation
 from stations.station import *
-from ui.hud import HUDGroup
+from ui.group_hud import HUDGroup
 import ui.theme as theme
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -19,15 +19,15 @@ class StationManager:
     def __init__(self, screen, on_switch_callback, gamedata: GameData):
         self.__screen    = screen
         self.__on_switch = on_switch_callback
-        self.__nav_group = BaseGroup()
+        self.__nav_group = UIGroup()
 
-        self.gamedata = gamedata
+        self.__gamedata = gamedata
 
         # ── Shared singletons ─────────────────────────────────────────────────
         self.stat_tracker = StatTracker(gamedata.game_hour,
                                         gamedata=gamedata,
                                         throughput_interval=10)
-        self.customer_manager = CustomerManager(game_data= self.gamedata,
+        self.customer_manager = CustomerManager(game_data=self.__gamedata,
                                                 max_capacity=5,
                                                 min_spawn_time=10.0,
                                                 max_spawn_time=20.0)
@@ -35,8 +35,8 @@ class StationManager:
         self.hud      = HUDGroup()
 
         # Tray travels between GrillStation and AssembleStation
-        factory   = ItemFactory()
-        self.tray = TrayGroup(
+        factory    = ItemFactory()
+        self.__tray = TrayGroup(
             name         = "tray",
             pos          = theme.POS_TRAY,
             max_capacity = 10,
@@ -44,8 +44,8 @@ class StationManager:
         )
 
         # ── Stations ──────────────────────────────────────────────────────────
-        self.stations = self._build_stations(screen, factory)
-        self.current_station = "order"
+        self.__stations         = self._build_stations(screen, factory)
+        self.__current_station  = "order"
         self._create_nav_buttons()
 
     def _build_stations(self, screen, factory):
@@ -56,43 +56,42 @@ class StationManager:
             ),
             "grill": GrillStation(
                 screen, GamePath.get_station("grill.png"),
-                self.gamedata, self.tray, self.order_ui,
+                self.__gamedata, self.__tray, self.order_ui,
             ),
             "assemble": AssembleStation(
                 screen, GamePath.get_station("test2.jpg"),
-                self.gamedata, self.tray,
+                self.__gamedata, self.__tray,
                 self.order_ui, self.customer_manager, self.stat_tracker,
             ),
             "restock": RestockStation(
                 screen, GamePath.get_station("test2.jpg"),
-                self.gamedata,
+                self.__gamedata,
             ),
         }
 
     def _create_nav_buttons(self):
         for target, pos in theme.POS_NAV.items():
-            name = f"btn_{target}"
-            btn  = UIButton(name, GamePath.get_ui(f"{target}.png"), pos,
-                            lambda t=target: self.switch_station(t), anchor="topleft")
+            btn = UIButton(f"btn_{target}", GamePath.get_ui(f"{target}.png"), pos,
+                           lambda t=target: self.switch_station(t), anchor="topleft")
             self.__nav_group.add(btn)
 
     def switch_station(self, target):
-        self.current_station = target
-        self.__on_switch(self.get_all_groups())
+        self.__current_station = target
+        self.__on_switch()
 
     def get_active_station(self):
-        return self.stations[self.current_station]
+        return self.__stations[self.__current_station]
 
     def get_all_groups(self):
         return self.get_active_station().get_all_groups() + [self.__nav_group]
 
     def update(self, dt):
-        self.gamedata.game_hour.update(dt)
+        self.__gamedata.game_hour.update(dt)
 
         # ── Single tick point for the customer model ──────────────────────────
-        self.customer_manager.update(dt)                       # spawn
-        expired  = self.customer_manager.update_ordering(dt)   # ordering patience
-        expired += self.customer_manager.update_waiting(dt)    # waiting  patience
+        self.customer_manager.update(dt)
+        expired  = self.customer_manager.update_ordering(dt)
+        expired += self.customer_manager.update_waiting(dt)
 
         for customer in expired:
             self.stat_tracker.log_satisfaction(0)
@@ -101,17 +100,15 @@ class StationManager:
                         + len(self.customer_manager.on_waiting))
         self.stat_tracker.update(dt, customer_count)
 
-        # HUD + OrderUI redraw every frame (both are shared across stations)
-        self.hud.refresh(self.gamedata.game_hour, self.gamedata)
+        self.hud.refresh(self.__gamedata.game_hour, self.__gamedata)
         self.order_ui.update_ui(dt)
 
-        for station in self.stations.values():
+        for station in self.__stations.values():
             station.update(dt)
-        self.__nav_group.update(dt)
 
     def draw(self):
         self.get_active_station().draw_background()
         for group in self.get_active_station().get_all_groups():
             group.draw(self.__screen)
         self.__nav_group.draw(self.__screen)
-        self.hud.draw(self.__screen)   # always on top
+        self.hud.draw(self.__screen)
