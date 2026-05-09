@@ -46,9 +46,9 @@ Most cooking sims are tuned by feel. Midnight Griddle treats balance and player 
 
 **Analytics Dashboard**
 
-![Net Revenue](screenshots/visulization/stats_revenue.png)
-![Customer Satisfaction](screenshots/visulization/stats_satisfaction.png)
-![Ingredients Sold](screenshots/visulization/stats_ingredients.png)
+![Net Revenue](screenshots/visualization/stats_revenue.png)
+![Customer Satisfaction](screenshots/visualization/stats_satisfaction.png)
+![Ingredients Sold](screenshots/visualization/stats_ingredients.png)
 
 ### Proposal
 📄 [Project Proposal (PDF)](project_proposal.pdf)
