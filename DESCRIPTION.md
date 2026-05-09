@@ -46,9 +46,9 @@ Most cooking sims are tuned by feel. Midnight Griddle treats balance and player 
 
 **Analytics Dashboard**
 
-![Net Revenue](screenshots/visualization/stats_revenue.png)
-![Customer Satisfaction](screenshots/visualization/stats_satisfaction.png)
-![Ingredients Sold](screenshots/visualization/stats_ingredients.png)
+![Net Revenue](screenshots/visualization/net_revenue.png)
+![Customer Satisfaction](screenshots/visualization/customer_satisfaction.png)
+![Ingredients Sold](screenshots/visualization/ingredients_sold.png)
 
 ### Proposal
 📄 [Project Proposal (PDF)](project_proposal.pdf)
@@ -227,7 +227,7 @@ This document records the deltas between the original project proposal and the a
 
 **Proposed:** "Clear closing time (around 7 mins per night)."
 
-**Implemented:** `GameHour(real_seconds_per_hour=60, total_hours=6)` in `gamedata.py` — i.e. **6 real minutes** representing 6 in-game hours (11 PM → 6 AM, one minute per hour). The constructor is parameterised, but the live default is 60s × 6 = 360s.
+**Implemented:** `GameHour(real_seconds_per_hour=60, total_hours=6)` in `gamedata.py` — i.e. **6 real minutes** representing 6 in-game hours (12 AM → 6 AM, one minute per hour). The constructor is parameterised, but the live default is 60s × 6 = 360s.
 
 - **What was changed:** shift length was tightened from ~7 minutes to a clean **6-minute / 6-hour mapping** (1 real second = 1 in-game minute).
 - **Why the change was made:** the 1:1 minute-to-hour ratio reads instantly off the HUD ("Hour 2.5" = 2.5 minutes in) and lines up cleanly with the half-hour snapping used by the stat tracker. Playtesting also showed that 7 minutes felt slightly too long once the difficulty ramp was added — 6 minutes hits the failure spike at the right time.

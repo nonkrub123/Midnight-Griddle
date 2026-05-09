@@ -5,7 +5,7 @@
 - **Project by:** [Your Name]
 - **Game Genre:** Management Simulation, Time Pressure
 
-Midnight Griddle is a station-based management simulation where the player runs a burger stand during the 11 PM – 6 AM graveyard shift. Each "night" is a 6-minute real-time round in which the player must take customer orders, cook patties on a 12-slot grill, assemble burgers via drag-and-drop, and submit them before the customer's patience runs out — all while managing finite ingredient stock and a cash balance that has to cover restocking. Difficulty scales both within a shift (a calm opening into a rush hour) and across nights (each successive night starts harder than the last). A built-in Tkinter analytics dashboard tracks revenue, customer satisfaction, throughput, assembly accuracy, and ingredient usage across sessions.
+Midnight Griddle is a station-based management simulation where the player runs a burger stand during the 12 AM – 6 AM graveyard shift. Each "night" is a 6-minute real-time round in which the player must take customer orders, cook patties on a 12-slot grill, assemble burgers via drag-and-drop, and submit them before the customer's patience runs out — all while managing finite ingredient stock and a cash balance that has to cover restocking. Difficulty scales both within a shift (a calm opening into a rush hour) and across nights (each successive night starts harder than the last). A built-in Tkinter analytics dashboard tracks revenue, customer satisfaction, throughput, assembly accuracy, and ingredient usage across sessions.
 
 ---
 
@@ -73,7 +73,7 @@ The game opens in fullscreen at 1920 × 1080. Press `ESC` or `P` at any time to 
 
 ## Tutorial / Usage
 
-**Main menu**
+### Main menu
 
 When the game starts you land on the main menu. Four options:
 
@@ -82,24 +82,30 @@ When the game starts you land on the main menu. Four options:
 - **VIEW STATS** — open the analytics dashboard (blocks the game until closed).
 - **QUIT** — exit.
 
-**The four stations**
+### The four stations
 
 Use the navigation buttons at the bottom of the screen to switch between stations:
 
-1. **Order Station** — incoming customers wait here. Click **ACCEPT ORDER** to take their order; the customer moves to the waiting queue and their ticket appears in the order panel on the right.
-2. **Grill Station** — drag a raw patty from the meat dispenser onto any of the 12 grill slots. Patties cook through three states (raw → cooked → burnt) over time. Cooked patties go in the tray to be carried to the assembly station.
+1. **Order Station** — incoming customers wait here. Click **ACCEPT ORDER** to take the front customer's order; they move to the waiting queue and their ticket appears in the order panel on the right.
+2. **Grill Station** — drag a raw patty from the meat dispenser onto any of the 12 grill slots. Patties cook through three states (raw → cooked → burnt) over time. Drag cooked patties into the tray to carry them to the assembly station.
 3. **Assemble Station** — drag ingredients from the right-side dispensers onto the plate in the correct stacking order (bottom bun on the bottom, top bun on top). The current order is mirrored on the left so you don't have to switch tabs. Click **SUBMIT ORDER** when done.
 4. **Restock Station** — buy more of any ingredient using the cash you've earned. Each ingredient has its own buy price.
 
-**Drag vs. click**
+### Controls
 
-The same item can be either clicked or dragged depending on motion. A short press in place is a click; any motion past a small threshold becomes a drag.
+- **Click vs. drag** — the same item can be either clicked or dragged depending on motion. A short press in place is a click; any motion past a small threshold becomes a drag.
+- **Take an order** — click **ACCEPT ORDER** at the Order Station. The front customer in the queue is the one whose order gets accepted.
+- **Take an ingredient** — drag an ingredient simply by click on the item, hold the click, and release the click when you want to drop.
+- **Return an ingredient** — drag an unwanted ingredient back into its original dispenser to restock it (it refund the stock).
+- **Delete an ingredient** — drag and drop the item into the trash can (the black cylinder at the Grill Station). Items sent to the trash are gone for good.
+- **Switch between active orders** — at the Assemble Station, use the left/right arrows on the order panel to cycle through accepted orders. You can submit any of them in any sequence — whichever order is currently displayed is the one being submitted.
+- **Submit an order** — click the **SUBMIT ORDER** button at the Assemble Station. The plate is graded against the currently displayed order.
 
-**Pause**
+### Pause
 
-Press `ESC` / `P`, or click the pause button at the top center of the screen. From the pause menu you can resume, view stats, or return to the main menu.
+Press `ESC` or `P`, or click the pause button at the top center of the screen. From the pause menu you can resume, view stats, or return to the main menu.
 
-**Stats dashboard**
+### Stats dashboard
 
 Inside the **VIEW STATS** window:
 
@@ -107,12 +113,10 @@ Inside the **VIEW STATS** window:
 - The **Range** dropdown toggles between the last 100 events and lifetime data.
 - Close the window to return to the game.
 
-**Win / lose conditions**
+### Win / lose conditions
 
 - **Shift Complete** — survive until 6 AM (6 in-game hours / 6 real minutes). Night counter advances by one.
 - **Shift Failed** — average rating drops below 2 stars. Save data is wiped and you have to start a new shift.
-
----
 
 ## Game Features
 

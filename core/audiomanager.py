@@ -145,52 +145,52 @@ class AudioManager:
 
     # ── Music ─────────────────────────────────────────────────────────────────
 
-    # def play_music(self, name: str | None = None, loop: bool = True):
-    #     """
-    #     Play a track by name. If no name is given, plays the current playlist
-    #     position. loop=True repeats forever; loop=False plays once.
-    #     """
-    #     if name is None:
-    #         if not self._playlist:
-    #             return
-    #         name = self._playlist[self._playlist_idx]
+    def play_music(self, name: str | None = None, loop: bool = True):
+        """
+        Play a track by name. If no name is given, plays the current playlist
+        position. loop=True repeats forever; loop=False plays once.
+        """
+        if name is None:
+            if not self._playlist:
+                return
+            name = self._playlist[self._playlist_idx]
 
-    #     path = self.MUSIC.get(name)
-    #     if path is None:
-    #         print(f"[audio] no music registered under '{name}'")
-    #         return
+        path = self.MUSIC.get(name)
+        if path is None:
+            print(f"[audio] no music registered under '{name}'")
+            return
 
-    #     if name in self._playlist:
-    #         self._playlist_idx = self._playlist.index(name)
+        if name in self._playlist:
+            self._playlist_idx = self._playlist.index(name)
 
-    #     try:
-    #         pygame.mixer.music.load(path)
-    #         pygame.mixer.music.set_volume(self.music_volume)
-    #         pygame.mixer.music.play(loops=-1 if loop else 0)
-    #     except pygame.error as e:
-    #         print(f"[audio] failed to play music '{name}': {e}")
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.set_volume(self.music_volume)
+            pygame.mixer.music.play(loops=-1 if loop else 0)
+        except pygame.error as e:
+            print(f"[audio] failed to play music '{name}': {e}")
 
-    # def stop_music(self, fade_ms: int = 0):
-    #     self._auto_advance = False
-    #     if fade_ms:
-    #         pygame.mixer.music.fadeout(fade_ms)
-    #     else:
-    #         pygame.mixer.music.stop()
+    def stop_music(self, fade_ms: int = 0):
+        self._auto_advance = False
+        if fade_ms:
+            pygame.mixer.music.fadeout(fade_ms)
+        else:
+            pygame.mixer.music.stop()
 
-    # def next_music(self, loop: bool = False):
-    #     """Advance the playlist by one and play that track."""
-    #     if not self._playlist:
-    #         return
-    #     self._playlist_idx = (self._playlist_idx + 1) % len(self._playlist)
-    #     self.play_music(self._playlist[self._playlist_idx], loop=loop)
+    def next_music(self, loop: bool = False):
+        """Advance the playlist by one and play that track."""
+        if not self._playlist:
+            return
+        self._playlist_idx = (self._playlist_idx + 1) % len(self._playlist)
+        self.play_music(self._playlist[self._playlist_idx], loop=loop)
 
-    # def play_playlist(self):
-    #     """Start the playlist from the top with auto-advance enabled."""
-    #     if not self._playlist:
-    #         return
-    #     self._playlist_idx = 0
-    #     self._auto_advance = True
-    #     self.play_music(self._playlist[0], loop=False)
+    def play_playlist(self):
+        """Start the playlist from the top with auto-advance enabled."""
+        if not self._playlist:
+            return
+        self._playlist_idx = 0
+        self._auto_advance = True
+        self.play_music(self._playlist[0], loop=False)
 
     # ── Update (call once per frame for auto-advance) ─────────────────────────
 
