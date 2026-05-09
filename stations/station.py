@@ -93,7 +93,7 @@ class GrillStation(Station):
 
         grill_positions = theme.POS_GRILL_LIST     # local — not stored as attribute
 
-        self.grill_list = [
+        self.__grill_list = [
             GrillGroup("grill", grill_positions[i], max_capacity=1,
                        base_plate=None, plate_size=(324, 174))
             for i in range(12)
@@ -114,7 +114,7 @@ class GrillStation(Station):
         )
         self.tray = tray
 
-        for grill in self.grill_list:
+        for grill in self.__grill_list:
             self.register_group(grill)
         self.register_group(self.meat_dispenser)
         self.register_group(self.tray)
@@ -224,18 +224,17 @@ class AssembleStation(Station):
         super().__init__(screen, bg_image_path)
         self.__gamedata         = gamedata
         self.__order_ui         = order_ui
-        self.__customer_manager = customer_manager
         self.__stat_tracker     = stat_tracker
         factory = ItemFactory()
 
         # ── Plate ─────────────────────────────────────────────────────────────
-        self.plate = PlateGroup(
+        self.__plate = PlateGroup(
             "plate", theme.POS_PLATE, max_capacity=10,
             base_plate=factory.create("redplate", pos=theme.POS_PLATE),
-            hitbox_size=(150, 1200),
+            hitbox_size=(250, 1200),
         )
 
-        # ── Ingredient dispensers ─────────────────────────────────────────────
+        # ── Ingredient __dispenser ─────────────────────────────────────────────
         def _make_dispenser(item_id: str) -> DispenserGroup:
             pos = theme.POS_DISPENSER[item_id]
             return DispenserGroup(
@@ -244,13 +243,13 @@ class AssembleStation(Station):
                 factory.create_base_plate("base_plate", pos),
             )
 
-        self.dispensers = {i_id: _make_dispenser(i_id)
+        self.__dispenser = {i_id: _make_dispenser(i_id)
                            for i_id in ItemData.get_ingredients()}
-        for dispenser in self.dispensers.values():
+        for dispenser in self.__dispenser.values():
             self.register_group(dispenser)
 
         # ── Order summary ─────────────────────────────────────────────────────
-        self.order_summary = OrderSummaryGroup()
+        self.__order_summary = OrderSummaryGroup()
 
         # ── Submit button ─────────────────────────────────────────────────────
         self.__btn_group = UIGroup()
@@ -270,8 +269,8 @@ class AssembleStation(Station):
 
         self.tray = tray
         self.register_group(self.tray)
-        self.register_group(self.plate)
-        self.register_group(self.order_summary)
+        self.register_group(self.__plate)
+        self.register_group(self.__order_summary)
         self.register_group(self.__order_ui)
         self.register_group(self.__btn_group)
 
@@ -280,7 +279,7 @@ class AssembleStation(Station):
     def update(self, dt):
         super().update(dt)
 
-        self.order_summary.sync(self.__order_ui.peek_current())
+        self.__order_summary.sync(self.__order_ui.peek_current())
 
         if self.__feedback_spr and self.__feedback_timer > 0:
             self.__feedback_timer -= dt
@@ -296,7 +295,7 @@ class AssembleStation(Station):
             self._flash("No active order!", color=theme.C_FLASH_WARN)
             return
 
-        plate_items = self.plate.get_items_with_state()
+        plate_items = self.__plate.get_items_with_state()
         plate_names = [p["name"] for p in plate_items]
         order_items = entry.items
 
@@ -316,7 +315,7 @@ class AssembleStation(Station):
         self._flash(f"Served!  {stars}  ({accuracy_pct:.0f}%)", color=theme.C_FLASH_OK)
 
         self.__order_ui.pop_current()
-        self.plate.clear()
+        self.__plate.clear()
 
     def _flash(self, message: str, color=None, duration=2.0):
         if color is None:

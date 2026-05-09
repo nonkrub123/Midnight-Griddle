@@ -170,6 +170,29 @@ class PlateGroup(StackGroup):
     def get_item_names(self) -> list[str]:
         return [item.name for item in self.placed_items()]
 
+    def _restack_all(self, exclude=None):
+        base_x   = self.station_block.rect.centerx
+        center_y = self.station_block.rect.centery
+        items    = [i for i in self.placed_items() if i is not exclude]
+
+        for item in items:
+            pixel_height = ItemData.get_prop(item.name, "pixel_height", item.rect.height)
+
+            # Preserve x, but snap to ±100px if beyond that limit
+            offset = item.rect.centerx - base_x
+            if abs(offset) > 100:
+                offset = 100 if offset > 0 else -100
+            target_x = base_x + offset
+
+            item.set_target((target_x, center_y), 0.15)
+            center_y -= pixel_height
+
+        self._lock_all_except_top()
+
+        if self._top_hitbox is not None:
+            self._top_hitbox.rect.centerx = base_x
+            self._top_hitbox.rect.centery = center_y
+            
     def get_items_with_state(self) -> list[dict]:
         result = []
         for item in self.placed_items():

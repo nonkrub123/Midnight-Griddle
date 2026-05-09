@@ -19,7 +19,7 @@ class InteractiveObject(pygame.sprite.Sprite):
         # Draw layer — used by InputHandler to lift sprite while dragging
         self.__default_layer = LAYER_FOOD
         self._layer = LAYER_FOOD
-        self.__cook_state = "default"
+        self._cook_state = "default"
 
         # Smooth movement
         self.__target_pos    = None
@@ -38,10 +38,6 @@ class InteractiveObject(pygame.sprite.Sprite):
             self.__is_locked = boolean
         else:
             return
-    
-    @property
-    def _cook_state(self):
-        return self.__cook_state
 
 
     # ── Movement ──────────────────────────────────────────────────────────────
@@ -277,7 +273,7 @@ class GrillableItem(InteractiveObject):
 
     def __init__(self, name, pos, images: dict):
         self.__max_cook_time  = ItemData.get_prop(name, "max_cook_time", 10.0)
-        self.__cook_state    = "precook"
+        self._cook_state    = "precook"
         self.__time_on_grill = 0.0
         self.__state_images   = images
         super().__init__(name, pos, images)
@@ -285,25 +281,14 @@ class GrillableItem(InteractiveObject):
         self.__last_tint_step = -1
         self.__tinted_image   = None
 
-    @property
-    def cook_state(self):
-        return self.__cook_state
-
-    @cook_state.setter
-    def cook_state(self, value):
-        assert value in self.__STATES, f"Invalid cook state: {value}"
-        if value != self.__cook_state:
-            self.__cook_state = value
-            self.image = self.__state_images[value]
-
     def on_cook(self, dt):
-        if self.__cook_state == "burnt":
+        if self._cook_state == "burnt":
             return
         self.__time_on_grill += dt
         new_state = self.__evaluate_cook_state()
-        self.cook_state = new_state
+        self._cook_state = new_state
         # Only tint once cooking has actually started
-        if self.__cook_state != "precook":
+        if self._cook_state != "precook":
             self.image = self.__get_tinted_image()
 
     def __evaluate_cook_state(self):
@@ -322,7 +307,7 @@ class GrillableItem(InteractiveObject):
             return self.__tinted_image
 
         self.__last_tint_step = step
-        state_key = self.__cook_state if self.__cook_state in ("raw","cooked","burnt") else "raw"
+        state_key = self._cook_state if self._cook_state in ("raw","cooked","burnt") else "raw"
         base      = self.__state_images[state_key].copy()
         # 255 = no change, 0 = black. Multiply RGB channels only, alpha untouched
         brightness = int((1.0 - step * 0.7) * 255)  # darkens to 30% at max
