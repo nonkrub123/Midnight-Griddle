@@ -72,7 +72,7 @@ import random
 from collections import deque
 import pygame
 from core.itemdata import ItemData
-
+from core.audiomanager import AudioManager
 
 # ── Difficulty constants ───────────────────────────────────────────────────────
 
@@ -172,6 +172,7 @@ class CustomerManager:
         self.__next_at = self._roll()
 
         self.__avatars = self._make_avatars()
+        self.__audio_manager = AudioManager()
 
     # ── Public properties ─────────────────────────────────────────────────────
 
@@ -288,6 +289,7 @@ class CustomerManager:
                 self.__ordering.append(self._spawn())
                 self.__timer   = 0.0
                 self.__next_at = self._roll()
+                self.__audio_manager.play_sound("bell")
 
     def _spawn(self) -> Customer:
         d = self.__difficulty

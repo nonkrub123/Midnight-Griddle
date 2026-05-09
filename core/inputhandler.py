@@ -112,8 +112,7 @@ class InputHandler:
                 if self.__held_item.has_tag("draggable"):
                     self.is_dragging = True
                     self.__held_group.handle_drag(self.__held_item, pos)
-                else:
-                    self.__reset()
+
 
     def __on_mouse_up(self, pos, *groups):
         if not self.__held_item:

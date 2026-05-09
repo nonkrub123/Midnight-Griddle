@@ -225,6 +225,7 @@ class AssembleStation(Station):
         self.__gamedata         = gamedata
         self.__order_ui         = order_ui
         self.__stat_tracker     = stat_tracker
+        self.__audio_manager = AudioManager()
         factory = ItemFactory()
 
         # ── Plate ─────────────────────────────────────────────────────────────
@@ -316,6 +317,8 @@ class AssembleStation(Station):
 
         self.__order_ui.pop_current()
         self.__plate.clear()
+
+        self.__audio_manager.play_sound("ghost_submit")
 
     def _flash(self, message: str, color=None, duration=2.0):
         if color is None:

@@ -4,6 +4,8 @@ from ui.factory import ItemFactory
 
 import ui.theme as theme
 
+from core.audiomanager import AudioManager
+
 def _load_surface(image_path):
     return pygame.image.load(image_path).convert_alpha()
 
@@ -51,6 +53,7 @@ class StackGroup(BaseGroup):
         super().__init__()
         self.name         = name
         self.max_capacity = max_capacity
+        self.__audio_manager = AudioManager()
 
         self.__factory = ItemFactory()
         if base_plate is not None:
@@ -117,8 +120,11 @@ class StackGroup(BaseGroup):
         if sprite is not self.station_block and sprite is not self._top_hitbox:
             super().handle_drag(sprite, pos)
             self._restack_all(exclude=sprite)  # ← pass the dragged item
+            self.__audio_manager.play_sound("pick_pop")
 
     def handle_drop(self, sprite, target):
+        self.__audio_manager.play_sound("place_pop")
+        
         if not self.can_accept(sprite):
             return False
         self.add(sprite)

@@ -8,7 +8,7 @@ from core.inputhandler import InputHandler
 from ui.group import BaseGroup
 import ui.theme as theme
 from core.menuscreen import MenuScreen
-
+from core.audiomanager import AudioManager
 
 class GameManager:
     """
@@ -38,6 +38,7 @@ class GameManager:
             self.__game_wrapper, self.__on_station_switch, self.__gamedata
         )
         self.__stat_viewer = StatViewer
+        self.__audio_manager = AudioManager()
 
         self.__state      = "menu"
         self.__menu       = None
@@ -88,6 +89,8 @@ class GameManager:
 
     def __continue_game(self):
         """Resume with existing gamedata — no reset."""
+        # self.__audio_manager.set_music_volume(0.25)
+        # self.__audio_manager.play_playlist()
         self.__station_manager = StationManager(
             self.__game_wrapper, self.__on_station_switch, self.__gamedata
         )
@@ -97,6 +100,8 @@ class GameManager:
 
     def __new_game(self):
         """Wipe gamedata then start fresh."""
+        # self.__audio_manager.set_music_volume(0.25)
+        # self.__audio_manager.play_playlist()
         self.__gamedata.restart_data()
         self.__station_manager = StationManager(
             self.__game_wrapper, self.__on_station_switch, self.__gamedata
@@ -107,14 +112,17 @@ class GameManager:
     def __pause(self):
         self.__build_pause()
         self.__state = "paused"
+        self.__audio_manager.pause_all()
 
     def __resume(self):
         self.__state = "playing"
         self.__menu  = None
+        self.__audio_manager.resume_all()
 
     def __return_home(self):
         self.__build_menu()
         self.__state = "menu"
+        self.__audio_manager.kill_all_sounds()
 
     def __quit(self):
         self.__running = False
@@ -181,12 +189,15 @@ class GameManager:
         self.__update()
 
         if self.__gamedata.game_hour.is_over:
+            self.__audio_manager.kill_all_sounds()
+
             self.__gamedata.next_night()
             self.__build_complete()
             self.__state = "complete"
             return
 
         if self.__gamedata.average_rating < 2:
+            self.__audio_manager.kill_all_sounds()
             self.__build_gameover()
             self.__state = "gameover"
             self.__gamedata.restart_data()

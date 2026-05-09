@@ -2,7 +2,7 @@ from core.settings import *
 from core.itemdata import ItemData
 import pygame
 import copy
-
+from core.audiomanager import AudioManager
 
 class InteractiveObject(pygame.sprite.Sprite):
     def __init__(self, name, pos, image):
@@ -281,6 +281,8 @@ class GrillableItem(InteractiveObject):
         self.__last_tint_step = -1
         self.__tinted_image   = None
 
+        self.__sizzle_channel: pygame.mixer.Channel | None = None
+
     def on_cook(self, dt):
         if self._cook_state == "burnt":
             return
@@ -290,6 +292,7 @@ class GrillableItem(InteractiveObject):
         # Only tint once cooking has actually started
         if self._cook_state != "precook":
             self.image = self.__get_tinted_image()
+        self._ensure_sizzle()             # keep loop alive while updating
 
     def __evaluate_cook_state(self):
         ratio = self.__time_on_grill / self.__max_cook_time
@@ -318,6 +321,30 @@ class GrillableItem(InteractiveObject):
         self.__tinted_image = base
         return base
 
+    # ── Sizzle channel management ────────────────────────────────────────────
+
+    def _ensure_sizzle(self):
+        if self.__sizzle_channel is not None and self.__sizzle_channel.get_busy():
+            return
+        snd = AudioManager().get_sound("sizzle_loop")
+        if snd is None:
+            return
+        ch = snd.play(loops=-1)
+        if ch is None:                     # all channels busy this frame
+            return
+        ch.set_volume(0.3)
+        self.__sizzle_channel = ch
+
+    def _stop_sizzle(self):
+        if self.__sizzle_channel is not None:
+            self.__sizzle_channel.fadeout(200)
+            self.__sizzle_channel = None
+
+    # ── Kill override — fires on drag, trash, or any sprite.kill() ──────────
+
+    def kill(self):
+        self._stop_sizzle()
+        super().kill()
 
 # ── Ingredient Item ───────────────────────────────────────────────────────────
 
