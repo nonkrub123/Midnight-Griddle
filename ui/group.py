@@ -1,6 +1,7 @@
 from core.settings import *
 from ui.interactive import *
 from ui.factory import ItemFactory
+from core.gamedata import GameData
 
 import ui.theme as theme
 

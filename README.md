@@ -43,6 +43,7 @@ pygame-ce>=2.5.0
 pandas>=2.0.0
 matplotlib>=3.7.0
 pillow>=10.0.0
+NOTE: YOU MUST USE PYTHON VERSION 3.14.2 OR HIGHER!
 ```
 
 > **Note:** this project uses `pygame-ce` (Community Edition), not the original `pygame`. They share the same `import pygame` API, but installing both in the same environment causes conflicts — pick one. If you already have regular `pygame` installed, run `pip uninstall pygame` first.
