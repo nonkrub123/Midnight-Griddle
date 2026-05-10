@@ -35,8 +35,6 @@ Most cooking sims are tuned by feel. Midnight Griddle treats balance and player 
 
 ### Screenshots
 
-> Replace these paths with whatever you actually keep in the repo.
-
 **Gameplay**
 
 ![Order Station](screenshots/gameplay/order_station.png)
@@ -46,9 +44,12 @@ Most cooking sims are tuned by feel. Midnight Griddle treats balance and player 
 
 **Analytics Dashboard**
 
-![Net Revenue](screenshots/visualization/net_revenue.png)
-![Customer Satisfaction](screenshots/visualization/customer_satisfaction.png)
-![Ingredients Sold](screenshots/visualization/ingredients_sold.png)
+![Over view](screenshots/visualization/dashboard_overview.png)
+![Net Revenue](screenshots/visualization/chart_net_revenue.png)
+![Customer Satisfaction](screenshots/chart_visualization/customer_satisfaction.png)
+![Ingredients Sold](screenshots/visualization/table_ingredients_sold.png)
+![Customer Throughput](screenshots/visualization/chart_customer_throughput.png)
+![Assembly Accuracy](screenshots/visualization/chart_assembly_accuracy.png)
 
 ### Proposal
 📄 [Project Proposal (PDF)](project_proposal.pdf)
@@ -74,7 +75,7 @@ The goal of the system is to make the player feel like they're actually cooking 
 
 The diagram below shows every class implemented in the project, the inheritance hierarchies, and the main composition relationships. The Mermaid source is embedded for GitHub rendering; see  `uml_diagram.pdf` for the attachable PDF version.
 
-[Download UML](https://github.com/nonkrub123/Midnight-Griddle/UML.pdf)
+[UML](https://github.com/nonkrub123/Midnight-Griddle/UML.pdf)
 ---
 
 ## 4. Object-Oriented Programming Implementation

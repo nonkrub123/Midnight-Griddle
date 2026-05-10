@@ -14,7 +14,7 @@ Midnight Griddle is a time-management and cooking simulation game built with **P
 To clone this project:
 
 ```sh
-git clone https://github.com/<username>/midnight-griddle.git
+git clone https://github.com/nonkrub123/midnight-griddle.git
 cd midnight-griddle
 ```
 
@@ -139,7 +139,6 @@ Inside the **VIEW STATS** window:
 
 - The looping sizzle channel can occasionally be stolen by other SFX during heavy bursts, leaving a cooking patty silent until the next state change re-triggers `_ensure_sizzle()`.
 - If the player drags an item exactly when it reaches the end of its tween animation, the snapback target can be off by one frame.
-- Music playlist code in `audiomanager.py` is currently commented out — no background music plays.
 
 ---
 
