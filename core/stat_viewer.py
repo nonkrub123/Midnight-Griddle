@@ -124,7 +124,12 @@ def _read(label):
     src = GamePath.get_gamedata(_CSV_FILES[label])
     if not os.path.exists(src) or os.path.getsize(src) == 0:
         return None
-    return _apply_window(pd.read_csv(src))
+    try:
+        df = pd.read_csv(src, on_bad_lines="skip")
+    except Exception as e:
+        print(f"[stat_viewer] failed to read {src}: {e}")
+        return None
+    return _apply_window(df)
 
 
 def _range_suffix():
@@ -201,16 +206,33 @@ def _chart_satisfaction(out):
 
 def _chart_throughput(out):
     df = _read("Customer Throughput")
-    if df is None or df.empty or "throughput" not in df.columns:
+    if df is None or df.empty or "throughput" not in df.columns or "game_hour" not in df.columns:
         return _placeholder(out, _CSV_FILES["Customer Throughput"])
 
-    counts = df["throughput"].value_counts().sort_index()
+    # Average customers in shop per half-hour bucket
+    series = df.groupby("game_hour")["throughput"].mean()
+
+    # Force the X-axis to cover the entire shift (hour 0 -> 5.5, 12 buckets).
+    # Missing buckets get 0 so the chart always shows the full timeline,
+    # even if the player only played part of the shift.
+    full_index = [i * 0.5 for i in range(12)]   # 0, 0.5, 1, ..., 5.5
+    series = series.reindex(full_index, fill_value=0).sort_index()
+
+    # Label each bucket as its game-hour value (e.g. "0", "0.5", "1", ...).
+    # Whole hours render without the decimal so the axis reads cleanly.
+    def _fmt_hour(h):
+        return str(int(h)) if h == int(h) else str(h)
+
+    labels = [_fmt_hour(h) for h in series.index]
+    values = series.values
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar(counts.index.astype(str), counts.values,
+    ax.bar(labels, values,
            color=_ACCENT, edgecolor=_BG, linewidth=0.8)
-    ax.set_title(f"Customer Throughput  —  {_range_suffix()}", fontsize=14, pad=12)
-    ax.set_xlabel("Customers in Shop")
-    ax.set_ylabel("Frequency")
+    ax.set_title(f"Customer Throughput  —  {_range_suffix()}",
+                 fontsize=14, pad=12)
+    ax.set_xlabel("Game Hour")
+    ax.set_ylabel("Avg. Customers in Shop")
     ax.grid(True, axis="y")
     fig.tight_layout()
     _save(fig, out)

@@ -332,7 +332,7 @@ class GrillableItem(InteractiveObject):
         ch = snd.play(loops=-1)
         if ch is None:                     # all channels busy this frame
             return
-        ch.set_volume(0.3)
+        ch.set_volume(0.17)
         self.__sizzle_channel = ch
 
     def _stop_sizzle(self):

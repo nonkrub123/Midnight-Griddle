@@ -57,7 +57,7 @@ class GameManager:
     # ── Menu building ────────────────────────────────────────────────────
 
     def __build_menu(self):
-        self.__menu = MenuScreen("BURGER SHIFT", [
+        self.__menu = MenuScreen("Midnight Griddle", [
             ("CONTINUE SHIFT", self.__continue_game),
             ("NEW SHIFT",      self.__new_game),
             ("VIEW STATS",     self.__show_stat),
@@ -88,24 +88,20 @@ class GameManager:
     # ── State transitions ────────────────────────────────────────────────
 
     def __continue_game(self):
-        """Resume with existing gamedata — no reset."""
-        # self.__audio_manager.set_music_volume(0.25)
-        # self.__audio_manager.play_playlist()
+        self.__gamedata.init_new_game()  # ← move before StationManager
         self.__station_manager = StationManager(
             self.__game_wrapper, self.__on_station_switch, self.__gamedata
         )
-        self.__gamedata.init_new_game()
+        self.__clock.tick()  # ← drain accumulated time before playing starts
         self.__state = "playing"
         self.__menu  = None
 
     def __new_game(self):
-        """Wipe gamedata then start fresh."""
-        # self.__audio_manager.set_music_volume(0.25)
-        # self.__audio_manager.play_playlist()
         self.__gamedata.restart_data()
         self.__station_manager = StationManager(
             self.__game_wrapper, self.__on_station_switch, self.__gamedata
         )
+        self.__clock.tick()  # ← same here
         self.__state = "playing"
         self.__menu  = None
 
@@ -115,6 +111,7 @@ class GameManager:
         self.__audio_manager.pause_all()
 
     def __resume(self):
+        self.__clock.tick()  # ← drain pause time
         self.__state = "playing"
         self.__menu  = None
         self.__audio_manager.resume_all()

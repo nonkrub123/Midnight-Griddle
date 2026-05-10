@@ -51,7 +51,7 @@ class StationManager:
     def _build_stations(self, screen):
         return {
             "order": OrderStation(
-                screen, GamePath.get_station("test2.jpg"),
+                screen, GamePath.get_station("order.jpg"),
                 self.__customer_manager, self.__order_ui,
             ),
             "grill": GrillStation(
@@ -59,12 +59,12 @@ class StationManager:
                 self.__gamedata, self.__tray, self.__order_ui,
             ),
             "assemble": AssembleStation(
-                screen, GamePath.get_station("test2.jpg"),
+                screen, GamePath.get_station("assemble2.png"),
                 self.__gamedata, self.__tray,
                 self.__order_ui, self.__customer_manager, self.__stat_tracker,
             ),
             "restock": RestockStation(
-                screen, GamePath.get_station("test2.jpg"),
+                screen, GamePath.get_station("restock.png"),
                 self.__gamedata,
             ),
         }

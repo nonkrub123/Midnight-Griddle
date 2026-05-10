@@ -104,11 +104,6 @@ class StatTracker:
     # ── 4. Assembly Accuracy ──────────────────────────────────────────────────
 
     def _accuracy_by_count(self, player_items: list[dict], order_items: list[str]) -> float:
-        """
-        Unordered ingredient count check. Compares how many of each item_id
-        the player has vs what was ordered, ignoring position and cook_state.
-        Returns accuracy_pct (0–100) scaled to 80% max.
-        """
         max_score = sum(ItemData.get_prop(i, "weight", 1) for i in order_items)
         if max_score == 0:
             return 0.0
@@ -117,15 +112,25 @@ class StatTracker:
         for item_id in order_items:
             order_counts[item_id] = order_counts.get(item_id, 0) + 1
 
+        # Separate cooked vs non-cooked counts for grillables
         player_counts: dict[str, int] = {}
+        player_cooked_counts: dict[str, int] = {}
         for p in player_items:
-            player_counts[p["name"]] = player_counts.get(p["name"], 0) + 1
+            name = p["name"]
+            if ItemData.get_prop(name, "grillable", False):
+                if p["cook_state"] == "cooked":
+                    player_cooked_counts[name] = player_cooked_counts.get(name, 0) + 1
+            else:
+                player_counts[name] = player_counts.get(name, 0) + 1
 
         score = 0
         for item_id, needed in order_counts.items():
-            matched = min(needed, player_counts.get(item_id, 0))
-            weight  = ItemData.get_prop(item_id, "weight", 1)
-            score  += matched * weight
+            weight = ItemData.get_prop(item_id, "weight", 1)
+            if ItemData.get_prop(item_id, "grillable", False):
+                matched = min(needed, player_cooked_counts.get(item_id, 0))
+            else:
+                matched = min(needed, player_counts.get(item_id, 0))
+            score += matched * weight
 
         pct = score / max_score * 100
         return round(pct * 0.8, 1)

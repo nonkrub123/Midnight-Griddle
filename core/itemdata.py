@@ -145,6 +145,18 @@ class ItemData:
             "layer_priority": 3, 
             "state_imgs":     {"default": "base_plate.png"}, 
         },
+        "placeholder": {
+            "type":           "object",
+            "clickable":      False,
+            "draggable":      False,
+            "ingredient":     False,
+            "grillable":      False,
+            "undeletable":    False,
+            "display_name":   "Place holder",
+            "pixel_height":   15,
+            "layer_priority": 3, 
+            "state_imgs":     {"default": "placeholder.png"}, 
+        },
         "plate": {
             "type":           "object",
             "clickable":      False,

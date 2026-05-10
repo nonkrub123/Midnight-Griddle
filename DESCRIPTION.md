@@ -54,12 +54,7 @@ Most cooking sims are tuned by feel. Midnight Griddle treats balance and player 
 📄 [Project Proposal (PDF)](project_proposal.pdf)
 
 ### Video Presentation
-🎥 [Watch the 7-minute presentation on YouTube](https://youtu.be/YOUR_VIDEO_ID)
-
-The presentation covers:
-1. **Intro & demo** — walkthrough of all four stations, the order/serve loop, and the analytics dashboard
-2. **Class design & usage** — how `GameManager`, `StationManager`, `GameData`, `InputHandler`, and the `BaseGroup`/`StackGroup` hierarchy fit together
-3. **Statistics & data visualization** — what each CSV records, the rating formula, and how the dashboard turns logs into insight
+🎥 [Watch the 7-minute presentation on YouTube](https://youtu.be/tZx_ZuB_gCE)
 
 ---
 
@@ -193,7 +188,7 @@ The dashboard is a `Tk` window with two `ttk.Combobox` dropdowns — **View** (w
 
 1. **Net Revenue** — line chart of money earned per transaction with a shaded fill. Reveals revenue trend and bursts.
 2. **Customer Satisfaction** — pie chart of star-rating distribution (0–5★). The composite rating is computed as `accuracy × (0.60 + 0.20 × ordering_ratio + 0.20 × waiting_ratio)`, then snapped to 0–5. Accuracy gates the bonuses, so being fast with a wrong burger never earns points.
-3. **Customer Throughput** — bar histogram of how often each "customers in shop" count occurred over the window. Useful for spotting saturation thresholds.
+3. **Customer Throughput** — bar graph of how many customer is in the game at each hour. We use mean to show how much customer appear in each hour.
 4. **Assembly Accuracy** — histogram of `accuracy_pct` (0–100) with a vertical mean line. Per-burger score is the weighted ratio of correctly-placed items, where grillables only earn their weight if the cook state is `cooked` (not raw, not burnt).
 5. **Ingredients Sold** — Matplotlib-rendered table aggregating each item across the window: total units, mean per customer, std-dev, and total revenue (`sell_price × quantity`).
 
@@ -424,8 +419,8 @@ The **core game loop is unchanged** from the proposal: take orders, cook patties
 ## 7. External Sources
 
 - **Game design inspiration** — *Papa's Burgeria* by Flipline Studios. The core loop (take order → grill patties → assemble in layers → serve before patience runs out) and the drag-and-drop ingredient interface are inspired by it. Midnight Griddle differs in three intentional ways: finite ingredient stock with a cash-gated restock system, a hard 6-minute shift timer instead of an open-ended day, and an escalating difficulty curve across nights. All sprite art and code in this project are original.
-- **Art / sprites** — None (all art is original or placeholder).
-- **Fonts** — System `serif` (no external font files).
+- **Art / sprites** — Background of order station and assemble station are generate by Gemini.
+- **Fonts** — System `serif`, `UID ประชาชน`.
 - **Sound / music** — All clips sourced from [Pixabay](https://pixabay.com/sound-effects/) under the Pixabay Content License:
   - `bell` — [Service receptionist bell (418758)](https://pixabay.com/sound-effects/servicereceptionist-bell-418758/)
   - `place_pop` — [Clean minimal pop (467466)](https://pixabay.com/sound-effects/clean-minimal-pop-467466/)

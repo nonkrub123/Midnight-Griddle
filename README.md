@@ -5,7 +5,7 @@
 - **Project by:** [Your Name]
 - **Game Genre:** Management Simulation, Time Pressure
 
-Midnight Griddle is a station-based management simulation where the player runs a burger stand during the 12 AM – 6 AM graveyard shift. Each "night" is a 6-minute real-time round in which the player must take customer orders, cook patties on a 12-slot grill, assemble burgers via drag-and-drop, and submit them before the customer's patience runs out — all while managing finite ingredient stock and a cash balance that has to cover restocking. Difficulty scales both within a shift (a calm opening into a rush hour) and across nights (each successive night starts harder than the last). A built-in Tkinter analytics dashboard tracks revenue, customer satisfaction, throughput, assembly accuracy, and ingredient usage across sessions.
+Midnight Griddle is a time-management and cooking simulation game built with **Python** and **Pygame**. You play as the lone server at a late-night burger stand, juggling four stations — taking orders, grilling patties, assembling burgers, and restocking ingredients — across a six-hour in-game shift. Each customer carries two patience meters (one for ordering, one for waiting on food), and your goal is to keep your average satisfaction rating from sliding below 2 stars before the clock runs out. 
 
 ---
 
@@ -155,8 +155,8 @@ Inside the **VIEW STATS** window:
 ## External Sources
 
 - **Game design inspiration** — *Papa's Burgeria* by Flipline Studios. The core loop (take order → grill patties → assemble in layers → serve before patience runs out) and the drag-and-drop ingredient interface are inspired by it. Midnight Griddle differs in three intentional ways: finite ingredient stock with a cash-gated restock system, a hard 6-minute shift timer instead of an open-ended day, and an escalating difficulty curve across nights. All sprite art and code in this project are original.
-- **Art / sprites** — None (all art is original or placeholder).
-- **Fonts** — System `serif` (no external font files).
+- **Art / sprites** — Background of order station and assemble station are generate by Gemini.
+- **Fonts** — System `serif`, `UID ประชาชน`.
 - **Sound / music** — All clips sourced from [Pixabay](https://pixabay.com/sound-effects/) under the Pixabay Content License:
   - `bell` — [Service receptionist bell (418758)](https://pixabay.com/sound-effects/servicereceptionist-bell-418758/)
   - `place_pop` — [Clean minimal pop (467466)](https://pixabay.com/sound-effects/clean-minimal-pop-467466/)
