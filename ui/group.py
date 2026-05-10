@@ -137,6 +137,8 @@ class StackGroup(BaseGroup):
         self._restack_all()
 
     def handle_snapback(self, sprite):
+        audio = AudioManager()
+        audio.play_sound("snapback")
         self.add(sprite)
         sprite.current_group = self
         self._restack_all()
@@ -321,6 +323,8 @@ class DispenserGroup(StackGroup):
 class TrashGroup(StackGroup):
     def handle_drop(self, sprite, target):
         if not sprite.has_tag("undeletable"):
+            audio = AudioManager()
+            audio.play_sound("throw")
             sprite.kill()
             return True
         return False

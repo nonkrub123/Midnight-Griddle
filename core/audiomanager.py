@@ -33,6 +33,8 @@ class AudioManager:
         "place_pop":    "assets/sfx/place_pop.wav",
         "ghost_submit":    "assets/sfx/ghost_submit.wav",
         "sizzle_loop":    "assets/sfx/sizzle_loop.wav",
+        "throw":    "assets/sfx/throw.wav",
+        "snapback":    "assets/sfx/snapback.wav",
     }
 
     MUSIC: dict[str, str] = {
