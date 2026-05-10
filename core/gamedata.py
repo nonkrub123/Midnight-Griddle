@@ -22,10 +22,10 @@ import os
 
 class GameHour:
     """
-    real_seconds_per_hour : real seconds = one game hour  (default 120)
+    real_seconds_per_hour : real seconds = one game hour  (default 60)
     total_hours           : shift length in game hours     (default 6)
     """
-    def __init__(self, real_seconds_per_hour=120.0, total_hours=6.0):
+    def __init__(self, real_seconds_per_hour=60.0, total_hours=6.0):
         self.__rate        = real_seconds_per_hour
         self.__total_hours = total_hours
         self.__elapsed     = 0.0
@@ -180,7 +180,7 @@ class GameData:
         self.__stock: dict[str, int] = {}
         for item_id in ItemData.get_all_edible():
             self.__stock[item_id] = 10
-        self.game_hour = GameHour(real_seconds_per_hour=120, total_hours=6)
+        self.game_hour = GameHour(real_seconds_per_hour=60, total_hours=6)
 
     def restart_data(self):
         print("Restarting the game Data")
